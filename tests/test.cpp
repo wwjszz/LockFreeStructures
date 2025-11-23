@@ -1,4 +1,6 @@
-#include "ReaderWriterQueue/readerwriterqueue.h"
+#include "../ReaderWriterQueue/readerwriterqueue.h"
+#include "../ConcurrentQueue/ImplicitProducerHashTable.h"
+
 #include "simplethread.h"
 
 using namespace hakle;
@@ -10,6 +12,8 @@ using namespace hakle;
 //#include <unistd.h>		// usleep()
 
 void unpredictableDelay( int extra = 0 ) {
+    HashTable<uint32_t, int, 5, 0> hashTable;
+    hashTable.Get( 5 );
     /*	if ((rand() & 4095) == 0) {
             usleep(2000 + extra);	// in microseconds
         }*/
