@@ -44,7 +44,7 @@ public:
 
             // try Taken
             Node* Next = CurrentHead->Next.load( std::memory_order_relaxed );
-            if ( Head.compare_exchange_strong( CurrentHead, Next, std::memory_order_acquire, std::memory_order_relaxed ) ) {
+            if ( Head.compare_exchange_strong( CurrentHead, Next, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
                 // taken success, decrease refcount twice, for our and list's ref
                 CurrentHead->Refs.fetch_add( -2, std::memory_order_release );
                 return CurrentHead;
@@ -72,7 +72,7 @@ private:
             // first update next then refs
             InNode->Next.store( CurrentHead, std::memory_order_relaxed );
             InNode->Refs.store( 1, std::memory_order_release );
-            if ( !Head.compare_exchange_strong( CurrentHead, InNode, std::memory_order_release, std::memory_order_relaxed ) ) {
+            if ( !Head.compare_exchange_strong( CurrentHead, InNode, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
                 // check if someone already using it
                 if ( InNode->Refs.fetch_add( AddFlag - 1, std::memory_order_release ) == 1 ) {
                     continue;
