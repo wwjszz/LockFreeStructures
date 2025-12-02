@@ -21,7 +21,7 @@
 #define HAKLE_OPERATOR_NEW_ARRAY( T, N ) HakleOperatorNewArray<T>( N )
 #define HAKLE_OPERATOR_DELETE( Ptr ) HakleOperatorDelete( Ptr )
 
-#define HAKLE_CONSTRUCT(Ptr, ...) HakleConstruct( Ptr, __VA_ARGS__ )
+#define HAKLE_CONSTRUCT( Ptr, ... ) HakleConstruct( Ptr, __VA_ARGS__ )
 #define HAKLE_DESTROY( Ptr ) HakleDestroy( Ptr )
 #define HAKLE_DESTROY_ARRAY( Ptr, N ) HakleDestroyArray( Ptr, N )
 
@@ -38,7 +38,7 @@ inline constexpr bool RequiresSpecialAlignment() noexcept {
 
 template <class T>
 inline constexpr T* HakleOperatorNew() {
-    HAKLE_CONSTEXPR_IF HAKLE_LIKELY ( RequiresSpecialAlignment<T>() ) {
+    HAKLE_CONSTEXPR_IF HAKLE_LIKELY( RequiresSpecialAlignment<T>() ) {
         return static_cast<T*>( ::operator new( sizeof( T ), static_cast<std::align_val_t>( alignof( T ) ) ) );
     }
     return static_cast<T*>( ::operator new( sizeof( T ) ) );
@@ -46,7 +46,7 @@ inline constexpr T* HakleOperatorNew() {
 
 template <class T>
 inline constexpr T* HakleOperatorNewArray( const std::size_t N ) {
-    HAKLE_CONSTEXPR_IF HAKLE_LIKELY ( RequiresSpecialAlignment<T>() ) {
+    HAKLE_CONSTEXPR_IF HAKLE_LIKELY( RequiresSpecialAlignment<T>() ) {
         return static_cast<T*>( ::operator new( N * sizeof( T ), static_cast<std::align_val_t>( alignof( T ) ) ) );
     }
     return static_cast<T*>( ::operator new( N * sizeof( T ) ) );
@@ -54,15 +54,13 @@ inline constexpr T* HakleOperatorNewArray( const std::size_t N ) {
 
 template <class T>
 inline constexpr void HakleOperatorDelete( T* ptr ) noexcept {
-    HAKLE_CONSTEXPR_IF HAKLE_LIKELY ( RequiresSpecialAlignment<T>() ) {
-        ::operator delete( ptr, static_cast<std::align_val_t>( alignof( T ) ) );
-    }
+    HAKLE_CONSTEXPR_IF HAKLE_LIKELY( RequiresSpecialAlignment<T>() ) { ::operator delete( ptr, static_cast<std::align_val_t>( alignof( T ) ) ); }
     else {
         ::operator delete( ptr );
     }
 }
 
-template<class T, class... Args>
+template <class T, class... Args>
 inline constexpr T* HakleConstruct( T* ptr, Args&&... InArgs ) {
     return ::new ( ptr ) T( std::forward<Args>( InArgs )... );
 }
@@ -78,9 +76,7 @@ template <class T>
 inline constexpr void HakleDestroyArray( T* ptr, const std::size_t N ) noexcept {
     if HAKLE_LIKELY ( ptr ) {
         for ( std::size_t i = 0; i < N; ++i ) {
-            if HAKLE_LIKELY ( ptr[ i ] ) {
-                ptr[ i ].~T();
-            }
+            ptr[ i ].~T();
         }
     }
 }
@@ -101,7 +97,6 @@ inline constexpr void HakleDelete( T* ptr ) noexcept {
     }
 }
 
-
 template <class T>
 inline constexpr void HakleDeleteArray( T* ptr, const std::size_t N ) noexcept {
     if HAKLE_LIKELY ( ptr ) {
@@ -119,13 +114,12 @@ inline constexpr T* HakleCreateArray( const std::size_t N ) {
     return ptr;
 }
 
-
 #else
 #define HAKLE_OPERATOR_NEW( T ) HakleOperatorNew<T>()
 #define HAKLE_OPERATOR_NEW_ARRAY( T, N ) HakleOperatorNewArray<T>( N )
 #define HAKLE_OPERATOR_DELETE( Ptr ) HakleOperatorDelete( Ptr )
 
-#define HAKLE_CONSTRUCT(Ptr, ...) HakleConstruct( Ptr, __VA_ARGS__ )
+#define HAKLE_CONSTRUCT( Ptr, ... ) HakleConstruct( Ptr, __VA_ARGS__ )
 #define HAKLE_DESTROY( Ptr ) HakleDestroy( Ptr )
 #define HAKLE_DESTROY_ARRAY( Ptr, N ) HakleDestroyArray( Ptr, N )
 
@@ -150,7 +144,7 @@ inline constexpr void HakleOperatorDelete( T* ptr ) noexcept {
     ::operator delete( ptr );
 }
 
-template<class T, class... Args>
+template <class T, class... Args>
 inline constexpr T* HakleConstruct( T* ptr, Args&&... InArgs ) {
     return ::new ( ptr ) T( std::forward<Args>( InArgs )... );
 }
@@ -188,7 +182,6 @@ inline constexpr void HakleDelete( T* ptr ) noexcept {
         HakleOperatorDelete( ptr );
     }
 }
-
 
 template <class T>
 inline constexpr void HakleDeleteArray( T* ptr, const std::size_t N ) noexcept {

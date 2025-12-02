@@ -36,6 +36,7 @@
 *.exe
 *.out
 *.app
+bin/
 
 # debug information files
 *.dwo
@@ -46,6 +47,13 @@
 # CMake
 build
 .cache
+CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
 
 # thirdparty
 thirdparty/googletest
+
+log.*

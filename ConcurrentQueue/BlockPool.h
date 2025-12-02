@@ -15,6 +15,13 @@
 // BlockPool + FreeList
 namespace hakle {
 
+template <class BLOCK_TYPE>
+struct BlockTraits {
+    constexpr static std::size_t BlockSize = BLOCK_TYPE::BlockSize;
+    using ValueType                        = typename BLOCK_TYPE::ValueType;
+    using BlockType                        = BLOCK_TYPE;
+};
+
 struct MemoryBase {
     bool HasOwner{ false };
 };
@@ -141,30 +148,43 @@ private:
     BLOCK_TYPE*              Head{ nullptr };
 };
 
-template <class BLOCK_TYPE>
+template <class ALLOCATOR_TYPE>
 class BlockManagerBase {
 public:
+    using AllocatorType                    = ALLOCATOR_TYPE;
+    using AllocatorTraits                  = HakeAllocatorTraits<AllocatorType>;
+    using BlockType                        = typename AllocatorTraits::ValueType;
+    using BlockTraits                      = BlockTraits<BlockType>;
+    constexpr static std::size_t BlockSize = BlockTraits::BlockSize;
+    using ValueType                        = typename BlockTraits::ValueType;
+
     virtual ~BlockManagerBase() = default;
     enum class AllocMode { CanAlloc, CannotAlloc };
 
-    virtual BLOCK_TYPE* RequisitionBlock( AllocMode InMode ) = 0;
-    virtual void        ReturnBlocks( BLOCK_TYPE* InBlock )  = 0;
-    virtual void        ReturnBlock( BLOCK_TYPE* InBlock )   = 0;
+    virtual BlockType* RequisitionBlock( AllocMode InMode ) = 0;
+    virtual void       ReturnBlocks( BlockType* InBlock )   = 0;
+    virtual void       ReturnBlock( BlockType* InBlock )    = 0;
 };
 
 // We set a block pool and a free list
-template <class BLOCK_TYPE, class ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
-class HakleBlockManager : public BlockManagerBase<BLOCK_TYPE> {
+template <class ALLOCATOR_TYPE>
+class HakleBlockManager : public BlockManagerBase<ALLOCATOR_TYPE> {
 public:
-    using BaseManager = BlockManagerBase<BLOCK_TYPE>;
-    using AllocMode   = typename BaseManager::AllocMode;
-    using AllocatorType = ALLOCATOR_TYPE;
+    using BaseManager = BlockManagerBase<ALLOCATOR_TYPE>;
+    using BaseManager::BlockSize;
+    using typename BaseManager::AllocatorTraits;
+    using typename BaseManager::AllocatorType;
+    using typename BaseManager::BlockTraits;
+    using typename BaseManager::BlockType;
+    using typename BaseManager::ValueType;
+
+    using AllocMode = typename BaseManager::AllocMode;
 
     explicit HakleBlockManager( std::size_t InSize ) : Pool( InSize ) {}
     ~HakleBlockManager() override = default;
 
-    BLOCK_TYPE* RequisitionBlock( AllocMode Mode ) override {
-        BLOCK_TYPE* Block = Pool.GetBlock();
+    BlockType* RequisitionBlock( AllocMode Mode ) override {
+        BlockType* Block = Pool.GetBlock();
         if ( Block != nullptr ) {
             return Block;
         }
@@ -178,24 +198,26 @@ public:
         else {
             // When alloc mode is CanAlloc, we allocate a new block
             // If user finishes using the block, it must be returned to the free list
-            BLOCK_TYPE* NewBlock = AllocatorType::Allocate();
-            AllocatorType::Construct( NewBlock );
+            BlockType* NewBlock = AllocatorTraits::Allocate( Allocator );
+            AllocatorTraits::Construct( Allocator, NewBlock );
             return NewBlock;
         }
     }
 
-    void ReturnBlocks( BLOCK_TYPE* InBlock ) override { FreeList.Add( InBlock ); }
-    void ReturnBlock( BLOCK_TYPE* InBlock ) override {
+    void ReturnBlock( BlockType* InBlock ) override { FreeList.Add( InBlock ); }
+    void ReturnBlocks( BlockType* InBlock ) override {
         while ( InBlock != nullptr ) {
-            BLOCK_TYPE* Next = InBlock->Next;
+            BlockType* Next = InBlock->Next;
             FreeList.Add( InBlock );
             InBlock = Next;
         }
     }
 
 private:
-    BlockPool<BLOCK_TYPE> Pool;
-    FreeList<BLOCK_TYPE>  FreeList;
+    // TODO: compress the allocator type
+    AllocatorType        Allocator;
+    BlockPool<BlockType> Pool;
+    FreeList<BlockType>  FreeList;
 };
 
 }  // namespace hakle
