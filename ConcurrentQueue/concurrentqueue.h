@@ -327,14 +327,16 @@ public:
             std::atomic_thread_fence( std::memory_order_acquire );
 
             std::size_t AttemptsCount = this->DequeueAttemptsCount.fetch_add( 1, std::memory_order_relaxed );
-            if ( HAKLE_LIKELY(CircularLessThan( AttemptsCount - FailedCount, this->TailIndex.load( std::memory_order_acquire ) ) ) ) {
-                // we can dequeue
-                IndexEntryArray* LocalIndexEntryArray = this->CurrentIndexEntryArray.load( std::memory_order_acquire );
-                std::size_t      LocalIndexEntryIndex = LocalIndexEntryArray->Tail.load( std::memory_order_acquire );
-
+            if ( HAKLE_LIKELY( CircularLessThan( AttemptsCount - FailedCount, this->TailIndex.load( std::memory_order_acquire ) ) ) ) {
+                // NOTE: getting headIndex must be front of getting CurrentIndexEntryArray
+                // if getting CurrentIndexEntryArray first, there is a situation that makes FirstBlockIndexBase larger than IndexEntryTailBase
                 // TODO: may be should be acq_rel?
                 std::size_t Index      = this->HeadIndex.fetch_add( 1, std::memory_order_relaxed );
                 std::size_t InnerIndex = Index & ( BlockSize - 1 );
+
+                // we can dequeue
+                IndexEntryArray* LocalIndexEntryArray = this->CurrentIndexEntryArray.load( std::memory_order_acquire );
+                std::size_t      LocalIndexEntryIndex = LocalIndexEntryArray->Tail.load( std::memory_order_acquire );
 
                 std::size_t IndexEntryTailBase  = LocalIndexEntryArray->Entries[ LocalIndexEntryIndex ].Base;
                 std::size_t FirstBlockIndexBase = Index & ~( BlockSize - 1 );
