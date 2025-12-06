@@ -7,19 +7,19 @@
 #include <atomic>
 #include <random>
 
-#include "../samples/LinearSearchMap.h"
+#include "../Hash/HashTable.h"
 #include "gtest/gtest.h"
 
 namespace hakle {
 
-class LinearSearchMapTest : public ::testing::Test {
+class HashTableTest : public ::testing::Test {
 protected:
-    static constexpr std::size_t MAP_SIZE = 10000;
-    LinearSearchMap<MAP_SIZE> map;
+    static constexpr std::size_t MAP_SIZE = 8192;
+    samples::HashTable<MAP_SIZE> map;
 };
 
 // Basic functionality tests
-TEST_F(LinearSearchMapTest, BasicSetAndGet) {
+TEST_F(HashTableTest, BasicSetAndGet) {
     map.SetItem(1, 100);
     EXPECT_EQ(map.GetItem(1), 100);
 
@@ -30,11 +30,11 @@ TEST_F(LinearSearchMapTest, BasicSetAndGet) {
     EXPECT_EQ(map.GetItem(1), 100);
 }
 
-TEST_F(LinearSearchMapTest, GetNonExistentKey) {
+TEST_F(HashTableTest, GetNonExistentKey) {
     EXPECT_EQ(map.GetItem(999), 0);
 }
 
-TEST_F(LinearSearchMapTest, UpdateExistingKey) {
+TEST_F(HashTableTest, UpdateExistingKey) {
     map.SetItem(1, 100);
     EXPECT_EQ(map.GetItem(1), 100);
 
@@ -42,7 +42,7 @@ TEST_F(LinearSearchMapTest, UpdateExistingKey) {
     EXPECT_EQ(map.GetItem(1), 200);
 }
 
-TEST_F(LinearSearchMapTest, MultipleItems) {
+TEST_F(HashTableTest, MultipleItems) {
     for (int i = 1; i <= 10; ++i) {
         map.SetItem(i, i * 100);
     }
@@ -53,7 +53,7 @@ TEST_F(LinearSearchMapTest, MultipleItems) {
 }
 
 // Concurrent tests
-TEST_F(LinearSearchMapTest, ConcurrentSetDifferentKeys) {
+TEST_F(HashTableTest, ConcurrentSetDifferentKeys) {
     constexpr int NUM_THREADS = 4;
     constexpr int ITEMS_PER_THREAD = 20;
 
@@ -85,7 +85,7 @@ TEST_F(LinearSearchMapTest, ConcurrentSetDifferentKeys) {
     }
 }
 
-TEST_F(LinearSearchMapTest, ConcurrentSetSameKey) {
+TEST_F(HashTableTest, ConcurrentSetSameKey) {
     constexpr int NUM_THREADS = 8;
     constexpr int KEY = 42;
     std::atomic<int> successCount{0};
@@ -121,7 +121,7 @@ TEST_F(LinearSearchMapTest, ConcurrentSetSameKey) {
     EXPECT_TRUE(validValue);
 }
 
-TEST_F(LinearSearchMapTest, ConcurrentSetAndGet) {
+TEST_F(HashTableTest, ConcurrentSetAndGet) {
     constexpr int NUM_WRITER_THREADS = 4;
     constexpr int NUM_READER_THREADS = 4;
     constexpr int ITEMS_PER_WRITER = 10;
@@ -180,7 +180,7 @@ TEST_F(LinearSearchMapTest, ConcurrentSetAndGet) {
     }
 }
 
-TEST_F(LinearSearchMapTest, StressTest) {
+TEST_F(HashTableTest, StressTest) {
     constexpr int NUM_THREADS = 8;
     constexpr int OPERATIONS_PER_THREAD = 100;
 
@@ -215,7 +215,7 @@ TEST_F(LinearSearchMapTest, StressTest) {
 }
 
 // Boundary tests
-TEST_F(LinearSearchMapTest, FillToCapacity) {
+TEST_F(HashTableTest, FillToCapacity) {
     for (std::size_t i = 1; i <= MAP_SIZE; ++i) {
         map.SetItem(static_cast<int>(i), static_cast<int>(i * 10));
     }
@@ -226,7 +226,7 @@ TEST_F(LinearSearchMapTest, FillToCapacity) {
 }
 
 // Performance benchmark test (optional)
-TEST_F(LinearSearchMapTest, PerformanceBenchmark) {
+TEST_F(HashTableTest, PerformanceBenchmark) {
     constexpr int NUM_THREADS = 4;
     constexpr int ITEMS_PER_THREAD = 2000;
 

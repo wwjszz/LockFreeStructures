@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.14)
-project(LockFreeQueue CXX)
+project(LockFreeStructures CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -45,6 +45,8 @@ endif ()
 # include directories
 # ============================================================================
 
+include_directories(${PROJECT_SOURCE_DIR}/)
+
 # ============================================================================
 # targets
 # ============================================================================
@@ -61,7 +63,15 @@ add_executable(unittest
 
 enable_testing()
 
-add_executable(linearsearchmaptest tests/linearsearchmaptest.cpp)
-target_link_libraries(linearsearchmaptest PRIVATE gtest_main)
+add_executable(samples_linearsearchmaptest tests/samples_linearsearchmaptest.cpp)
+target_link_libraries(samples_linearsearchmaptest PRIVATE gtest_main)
 
-add_test(NAME linearsearchmaptest COMMAND linearsearchmaptest)
+add_executable(samples_hashtabletest tests/samples_hashtabletest.cpp)
+target_link_libraries(samples_hashtabletest PRIVATE gtest_main)
+
+add_executable(hashtabletest tests/hashtabletest.cpp)
+target_link_libraries(hashtabletest PRIVATE gtest_main)
+
+add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
+add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)
+add_test(NAME hashtabletest COMMAND hashtabletest)

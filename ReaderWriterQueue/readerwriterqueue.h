@@ -11,34 +11,7 @@
 #include <memory>
 #include <utility>
 
-#ifndef HAKLE_CPP_VERSION
-#if defined(_MSVC_LANG)
-#define HAKLE_CPLUSPLUS _MSVC_LANG
-#else
-#define HAKLE_CPLUSPLUS __cplusplus
-#endif
-
-#if HAKLE_CPLUSPLUS >= 202002L
-#define HAKLE_CPP_VERSION 20
-#elif HAKLE_CPLUSPLUS >= 201703L
-#define HAKLE_CPP_VERSION 17
-#elif HAKLE_CPLUSPLUS >= 201402L
-#define HAKLE_CPP_VERSION 14
-#elif HAKLE_CPLUSPLUS >= 201103L
-#define HAKLE_CPP_VERSION 11
-#else
-#define HAKLE_CPP_VERSION 0
-#error "This library requires C++11 or later"
-#endif
-
-#endif
-
-#if __cpp_lib_hardware_interference_size >= 201703L
-#include <new>
-#define HAKLE_CACHE_LINE_SIZE std::hardware_destructive_interference_size
-#else
-#define HAKLE_CACHE_LINE_SIZE 64
-#endif
+#include "common/memory.h"
 
 #if HAKLE_CPP_VERSION >= 20
 #include <semaphore>
@@ -55,52 +28,6 @@
 #endif
 
 namespace hakle {
-
-#if HAKLE_CPP_VERSION >= 17
-#define OPERATOR_NEW(T) hakle_new<T>()
-#define OPERATOR_NEW_ARRAY(T, N) hakle_new_array<T>(N)
-#define OPERATOR_DELETE(Ptr) hakle_delete(Ptr)
-
-#define CONSTEXPR_IF constexpr
-
-template <class T>
-inline constexpr bool requires_special_alignment() noexcept {
-    return alignof( T ) > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
-}
-
-template <class T>
-inline constexpr T* hakle_new() {
-    if constexpr (requires_special_alignment<T>()) {
-        return static_cast<T*>( ::operator new( sizeof( T ), static_cast<std::align_val_t>( alignof( T ) ) ) );
-    }
-    return static_cast<T*>( ::operator new( sizeof( T ) ) );
-}
-
-template <class T>
-inline constexpr T* hakle_new_array( const std::size_t N ) {
-    if constexpr (requires_special_alignment<T>()) {
-        return static_cast<T*>( ::operator new( N * sizeof( T ), static_cast<std::align_val_t>( alignof( T ) ) ) );
-    }
-    return static_cast<T*>( ::operator new( N * sizeof( T ) ) );
-}
-
-template <class T>
-inline constexpr void hakle_delete( T* ptr ) noexcept {
-    if constexpr (requires_special_alignment<T>()) {
-        ::operator delete( ptr, static_cast<std::align_val_t>( alignof( T ) ) );
-    }
-    else {
-        ::operator delete( ptr );
-    }
-}
-
-
-#else
-#define OPERATOR_NEW(T, M) static_cast<T*>(::operator new(M))
-#define OPERATOR_NEW_ARRAY(T, M, N) static_cast<T*>(::operator new(N * M))
-#define OPERATOR_DELETE(Ptr) ::operator delete(Ptr)
-#define CONSTEXPR_IF
-#endif
 
 #if HAKLE_CPP_VERSION >= 20
 template <class T>
@@ -247,7 +174,7 @@ public:
 
 #if HAKLE_CPP_VERSION >= 17
             CurrentBlock->~Block();
-            OPERATOR_DELETE( CurrentBlock );
+            HAKLE_OPERATOR_DELETE( CurrentBlock );
 #else
             char* RawBlock = CurrentBlock->RawThis;
             CurrentBlock->~Block();
@@ -615,7 +542,7 @@ private:
                     Data[ i ].~T();
                 }
             }
-            OPERATOR_DELETE( Data );
+            HAKLE_OPERATOR_DELETE( Data );
 #else
             Clear();
             OPERATOR_DELETE( RawData );
@@ -648,8 +575,8 @@ private:
 
     static Block* MakeBlock( std::size_t capacity ) noexcept {
 #if HAKLE_CPP_VERSION >= 17
-        T*     NewData  = OPERATOR_NEW_ARRAY( T, capacity );
-        Block* NewBlock = OPERATOR_NEW( Block );
+        T*     NewData  = HAKLE_OPERATOR_NEW_ARRAY( T, capacity );
+        Block* NewBlock = HAKLE_OPERATOR_NEW( Block );
         return ::new( NewBlock ) Block( capacity, NewData );
 #else
         char* NewData  = OPERATOR_NEW( char, capacity * sizeof(T) + alignof(T) - 1 );

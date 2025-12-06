@@ -1,4 +1,5 @@
-#include "ReaderWriterQueue/readerwriterqueue.h"
+#include "../ReaderWriterQueue/readerwriterqueue.h"
+
 #include "simplethread.h"
 
 using namespace hakle;
