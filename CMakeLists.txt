@@ -72,6 +72,14 @@ target_link_libraries(samples_hashtabletest PRIVATE gtest_main)
 add_executable(hashtabletest tests/hashtabletest.cpp)
 target_link_libraries(hashtabletest PRIVATE gtest_main)
 
+add_executable(freelisttest tests/freelisttest.cpp)
+target_link_libraries(freelisttest PRIVATE gtest_main)
+
+add_executable(blockpooltest tests/blockpooltest.cpp)
+target_link_libraries(blockpooltest PRIVATE gtest_main)
+
 add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
 add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)
 add_test(NAME hashtabletest COMMAND hashtabletest)
+add_test(NAME freelisttest COMMAND freelisttest)
+add_test(NAME blockpooltest COMMAND blockpooltest)

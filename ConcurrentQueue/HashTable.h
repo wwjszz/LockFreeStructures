@@ -6,11 +6,13 @@
 #define HashTable_H
 
 #include <array>
-#include <assert.h>
+#include <cassert>
 #include <atomic>
 #include <functional>
 
 #include "common/memory.h"
+
+#include <iostream>
 
 namespace hakle {
 
@@ -55,7 +57,7 @@ namespace core {
 
     template <class T>
     struct HashImpl : HashDispatch<sizeof( T )> {
-        static_assert( std::is_integral<T>::value, "HashImpl<T> only supports integral types" );
+        static_assert( std::is_integral_v<T>, "HashImpl<T> only supports integral types" );
     };
 
     template <class T>
@@ -66,12 +68,22 @@ namespace core {
 
 }  // namespace core
 
-// NOTE: value should be controlled by user
+enum class HashTableStatus {
+    GET_SUCCESS,
+    ADD_SUCCESS,
+    FAILED,
+};
+
 // TODO: more useful
 template <class TKey, class TValue, TKey INVALID_KEY, std::size_t INITIAL_HASH_SIZE>
 class HashTable {
 public:
     HashTable() {
+        std::atomic<TValue> TempAtomic;
+        if ( !std::atomic_is_lock_free( &TempAtomic ) ) {
+            std::cerr << "[WARNING] std::atomic<CheckedAtomic<" << typeid( TValue ).name() << ">::value_ is NOT lock-free\n";
+        }
+
         HashNode* Temp = HAKLE_NEW( HashNode, INITIAL_HASH_SIZE );
         if ( !Temp ) {
             throw std::bad_alloc();
@@ -113,73 +125,73 @@ public:
         }
     }
 
-    TValue* Get( const TKey& Key ) {
+    bool Get( const TKey& Key, TValue& OutValue ) const noexcept {
         HashNode* CurrentMainHash = MainHash.load( std::memory_order_acquire );
-        Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
-        return CurrentEntry ? CurrentEntry->Value : nullptr;
+        if ( Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash ) ) {
+            OutValue = CurrentEntry->Value.load( std::memory_order_acquire );
+            return true;
+        }
+        return false;
     }
 
-    // TODO: support delete or update
-    template <class F, class... Args>
-    TValue* GetOrAddByFunc( const TKey& Key, F&& CreateValueFunc, Args&&... InArgs ) {
-        // TODO: figure out memory_order
-        std::size_t NewCount        = EntriesCount.fetch_add( 1, std::memory_order_relaxed );
-        HashNode*   CurrentMainHash = MainHash.load( std::memory_order_acquire );
+    bool Set( const TKey& Key, const TValue& Value ) noexcept {
+        HashNode* CurrentMainHash = MainHash.load( std::memory_order_acquire );
 
         Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
         if ( CurrentEntry != nullptr ) {
-            return CurrentEntry->Value;
+            CurrentEntry->Value.store( Value, std::memory_order_release );
+            return true;
         }
 
-        while ( true ) {
-            if ( NewCount >= ( CurrentMainHash->Capacity >> 1 ) && !HashResizeInProgressFlag.test_and_set( std::memory_order_acquire ) ) {
-                CurrentMainHash = MainHash.load( std::memory_order_acquire );
-                if ( NewCount < ( CurrentMainHash->Capacity >> 1 ) ) {
-                    HashResizeInProgressFlag.clear( std::memory_order_relaxed );
-                }
-                else {
-                    std::size_t NewCapacity = CurrentMainHash->Capacity << 1;
-                    while ( NewCount >= NewCapacity >> 1 ) {
-                        NewCount <<= 1;
-                    }
-                    HashNode* NewHash = HAKLE_NEW( HashNode, NewCapacity );
-                    NewHash->Prev     = CurrentMainHash;
-                    MainHash.store( NewHash, std::memory_order_release );
-                    HashResizeInProgressFlag.clear( std::memory_order_release );
-                    CurrentMainHash = NewHash;
-                }
-            }
-
-            // if there is enough space, add the new entry
-            if ( NewCount < ( CurrentMainHash->Capacity >> 1 ) + ( CurrentMainHash->Capacity >> 2 ) ) {
-                TValue* NewValue = CreateValueFunc( std::forward<Args>( InArgs )... );
-                if ( NewValue == nullptr ) {
-                    EntriesCount.fetch_sub( 1, std::memory_order_relaxed );
-                    return nullptr;
-                }
-                std::size_t HashId = core::HashImpl<TKey>::Hash( Key );
-                std::size_t Index  = HashId;
-                while ( true ) {
-                    Index &= CurrentMainHash->Capacity - 1;
-
-                    TKey CurrentKey = CurrentMainHash->Entries[ Index ].Key.load( std::memory_order_relaxed );
-                    if ( CurrentKey == INVALID_KEY ) {
-                        if ( TKey Empty = INVALID_KEY; CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong(
-                                 Empty, Key, std::memory_order_acq_rel, std::memory_order_relaxed ) ) {
-                            // TODO: error in here
-                            CurrentMainHash->Entries[ Index ].Value = NewValue;
-                            break;
-                        }
-                    }
-
-                    ++Index;
-                }
-                return NewValue;
-            }
-
-            CurrentMainHash = MainHash.load( std::memory_order_acquire );
-        }
+        bool AddResult = InnerAdd( Key, Value, CurrentMainHash );
+        return AddResult;
     }
+
+    // OutValue will be set when Get is successful
+    HashTableStatus GetOrAdd( const TKey& Key, TValue& OutValue, const TValue& InValue ) {
+        HashNode* CurrentMainHash = MainHash.load( std::memory_order_acquire );
+
+        Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
+        if ( CurrentEntry != nullptr ) {
+            OutValue = CurrentEntry->Value.load( std::memory_order_acquire );
+            return HashTableStatus::GET_SUCCESS;
+        }
+
+        bool AddResult = InnerAdd( Key, InValue, CurrentMainHash );
+        if ( !AddResult ) {
+            return HashTableStatus::FAILED;
+        }
+
+        OutValue = InValue;
+        return HashTableStatus::ADD_SUCCESS;
+    }
+
+    template <class F, class... Args>
+        requires std::is_pointer_v<TValue>
+    HashTableStatus GetOrAddByFunc( const TKey& Key, TValue& OutValue, F&& AllocateValueFunc, Args&&... InArgs ) {
+        HashNode* CurrentMainHash = MainHash.load( std::memory_order_acquire );
+
+        Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
+        if ( CurrentEntry != nullptr ) {
+            OutValue = CurrentEntry->Value.load( std::memory_order_acquire );
+            return HashTableStatus::GET_SUCCESS;
+        }
+
+        TValue NewValue = AllocateValueFunc( InArgs... );
+        if ( NewValue == nullptr ) {
+            return HashTableStatus::FAILED;
+        }
+
+        bool AddResult = InnerAdd( Key, NewValue, CurrentMainHash );
+        if ( !AddResult ) {
+            return HashTableStatus::FAILED;
+        }
+
+        OutValue = NewValue;
+        return HashTableStatus::ADD_SUCCESS;
+    }
+
+    [[nodiscard]] std::size_t GetSize() const noexcept { return EntriesCount.load( std::memory_order_relaxed ); }
 
 private:
     struct HashNode {
@@ -213,8 +225,8 @@ private:
                 }
             }
 
-            std::atomic<TKey> Key{ INVALID_KEY };
-            TValue*           Value{ nullptr };
+            std::atomic<TKey>   Key{ INVALID_KEY };
+            std::atomic<TValue> Value{};
         };
 
         HashNode*   Prev{ nullptr };
@@ -224,7 +236,7 @@ private:
 
     using Entry = typename HashNode::Entry;
 
-    Entry* InnerGetEntry( const TKey& Key, HashNode* CurrentMainHash ) {
+    Entry* InnerGetEntry( const TKey& Key, HashNode* CurrentMainHash ) const {
         assert( CurrentMainHash != nullptr );
 
         std::size_t HashId = core::HashImpl<TKey>::Hash( Key );
@@ -236,7 +248,7 @@ private:
 
                 TKey CurrentKey = CurrentHash->Entries[ Index ].Key.load( std::memory_order_relaxed );
                 if ( CurrentKey == Key ) {
-                    TValue* CurrentValue = CurrentHash->Entries[ Index ].Value;
+                    TValue CurrentValue = CurrentHash->Entries[ Index ].Value.load( std::memory_order_acquire );
 
                     if ( CurrentHash != CurrentMainHash ) {
                         Index                          = HashId;
@@ -248,7 +260,7 @@ private:
                             // TODO: figure out memory_order
                             if ( auto Empty = INVALID_KEY; CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong(
                                      Empty, Key, std::memory_order_acquire, std::memory_order_relaxed ) ) {
-                                CurrentMainHash->Entries[ Index ].Value = CurrentValue;
+                                CurrentMainHash->Entries[ Index ].Value.store( CurrentValue, std::memory_order_release );
                                 break;
                             }
                             ++Index;
@@ -264,6 +276,57 @@ private:
             }
         }
         return nullptr;
+    }
+
+    bool InnerAdd( const TKey& Key, const TValue& InValue, HashNode* CurrentMainHash ) {
+        std::size_t NewCount = EntriesCount.fetch_add( 1, std::memory_order_relaxed );
+
+        while ( true ) {
+            if ( NewCount >= ( CurrentMainHash->Capacity >> 1 ) && !HashResizeInProgressFlag.test_and_set( std::memory_order_acquire ) ) {
+                CurrentMainHash = MainHash.load( std::memory_order_acquire );
+                if ( NewCount < ( CurrentMainHash->Capacity >> 1 ) ) {
+                    HashResizeInProgressFlag.clear( std::memory_order_relaxed );
+                }
+                else {
+                    std::size_t NewCapacity = CurrentMainHash->Capacity << 1;
+                    while ( NewCount >= NewCapacity >> 1 ) {
+                        NewCount <<= 1;
+                    }
+                    HashNode* NewHash = HAKLE_NEW( HashNode, NewCapacity );
+                    if ( NewHash == nullptr ) {
+                        EntriesCount.fetch_sub( 1, std::memory_order_relaxed );
+                        return false;
+                    }
+                    NewHash->Prev = CurrentMainHash;
+                    MainHash.store( NewHash, std::memory_order_release );
+                    HashResizeInProgressFlag.clear( std::memory_order_release );
+                    CurrentMainHash = NewHash;
+                }
+            }
+
+            // if there is enough space, add the new entry
+            if ( NewCount < ( CurrentMainHash->Capacity >> 1 ) + ( CurrentMainHash->Capacity >> 2 ) ) {
+                std::size_t HashId = core::HashImpl<TKey>::Hash( Key );
+                std::size_t Index  = HashId;
+                while ( true ) {
+                    Index &= CurrentMainHash->Capacity - 1;
+
+                    TKey CurrentKey = CurrentMainHash->Entries[ Index ].Key.load( std::memory_order_relaxed );
+                    if ( CurrentKey == INVALID_KEY ) {
+                        if ( TKey Empty = INVALID_KEY; CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong(
+                                 Empty, Key, std::memory_order_acq_rel, std::memory_order_relaxed ) ) {
+                            CurrentMainHash->Entries[ Index ].Value.store( InValue, std::memory_order_release );
+                            break;
+                        }
+                    }
+
+                    ++Index;
+                }
+                return true;
+            }
+
+            CurrentMainHash = MainHash.load( std::memory_order_acquire );
+        }
     }
 
     std::atomic<std::size_t> EntriesCount{ 0 };

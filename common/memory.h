@@ -19,9 +19,13 @@
 #define HAKLE_OPERATOR_NEW_ARRAY( T, N ) HakleOperatorNewArray<T>( N )
 #define HAKLE_OPERATOR_DELETE( Ptr ) HakleOperatorDelete( Ptr )
 
-#define HAKLE_NEW(T, ...) HakleNew<T>(__VA_ARGS__)
+#define HAKLE_NEW( T, ... ) HakleNew<T>( __VA_ARGS__ )
 #define HAKLE_DELETE( Ptr ) HakleDelete( Ptr )
 #define HAKLE_DELETE_ARRAY( Ptr, N ) HakleDeleteArray( Ptr, N )
+
+#define HAKLE_CREATE_ARRAY( T, N ) HakleCreateArray<T>( N )
+#define HAKLE_DESTROY( Ptr ) HakleDestroy( Ptr )
+#define HAKLE_DESTROY_ARRAY( Ptr, N ) HakleDestroyArray( Ptr, N )
 
 #define CONSTEXPR_IF constexpr
 
@@ -39,11 +43,11 @@ inline constexpr T* HakleOperatorNew() {
 }
 
 template <class T, class... Args>
-inline constexpr T* HakleNew(Args&&... InArgs) {
+inline constexpr T* HakleNew( Args&&... InArgs ) {
     T* Ptr = HakleOperatorNew<T>();
     if ( !Ptr )
         return nullptr;
-    return new ( Ptr ) T(std::forward<Args>(InArgs)...);
+    return new ( Ptr ) T( std::forward<Args>( InArgs )... );
 }
 
 template <class T>
@@ -64,7 +68,7 @@ inline constexpr void HakleOperatorDelete( T* ptr ) noexcept {
     }
 }
 
-template<class T>
+template <class T>
 inline constexpr void HakleDelete( T* ptr ) noexcept {
     if ( ptr ) {
         ptr->~T();
@@ -72,13 +76,38 @@ inline constexpr void HakleDelete( T* ptr ) noexcept {
     }
 }
 
-template<class T>
+template <class T>
 inline constexpr void HakleDeleteArray( T* ptr, const std::size_t N ) noexcept {
     if ( ptr ) {
         for ( std::size_t i = 0; i < N; ++i ) {
-            ptr[i].~T();
+            ptr[ i ].~T();
         }
         HakleOperatorDelete( ptr );
+    }
+}
+
+template <class T>
+inline constexpr T* HakleCreateArray( const std::size_t N ) {
+    T* ptr = HakleOperatorNewArray<T>( N );
+    for ( std::size_t i = 0; i < N; ++i ) {
+        new ( ptr + i ) T();
+    }
+    return ptr;
+}
+
+template <class T>
+inline constexpr void HakleDestroy( T* ptr ) noexcept {
+    if ( ptr ) {
+        ptr->~T();
+    }
+}
+
+template <class T>
+inline constexpr void HakleDestroyArray( T* ptr, const std::size_t N ) noexcept {
+    if ( ptr ) {
+        for ( std::size_t i = 0; i < N; ++i ) {
+            ptr[ i ].~T();
+        }
     }
 }
 
