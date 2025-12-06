@@ -5,10 +5,8 @@
 #ifndef HashTable_H
 #define HashTable_H
 
-#include <array>
-#include <cassert>
 #include <atomic>
-#include <functional>
+#include <cassert>
 
 #include "common/memory.h"
 
@@ -31,7 +29,7 @@ namespace core {
 
     template <>
     struct HashDispatch<4> {
-        static uint32_t Hash( uint32_t Key ) noexcept {
+        constexpr static uint32_t Hash( uint32_t Key ) noexcept {
             // MurmurHash3 finalizer -- see https://code.google.com/p/smhasher/source/browse/trunk/MurmurHash3.cpp
             // Since the thread ID is already unique, all we really want to do is propagate that
             // uniqueness evenly across all the bits, so that we can use a subset of the bits while
@@ -46,7 +44,7 @@ namespace core {
 
     template <>
     struct HashDispatch<8> {
-        static uint64_t Hash( uint64_t Key ) noexcept {
+        constexpr static uint64_t Hash( uint64_t Key ) noexcept {
             Key ^= Key >> 33;
             Key *= 0xff51afd7ed558ccd;
             Key ^= Key >> 33;
@@ -78,7 +76,7 @@ enum class HashTableStatus {
 template <class TKey, class TValue, TKey INVALID_KEY, std::size_t INITIAL_HASH_SIZE>
 class HashTable {
 public:
-    HashTable() {
+    constexpr HashTable() {
         std::atomic<TValue> TempAtomic;
         if ( !std::atomic_is_lock_free( &TempAtomic ) ) {
             std::cerr << "[WARNING] std::atomic<CheckedAtomic<" << typeid( TValue ).name() << ">::value_ is NOT lock-free\n";
@@ -91,7 +89,7 @@ public:
         MainHash.store( Temp, std::memory_order_relaxed );
     }
 
-    ~HashTable() {
+    constexpr ~HashTable() {
         auto CurrentHash = MainHash.load( std::memory_order_relaxed );
         while ( CurrentHash != nullptr ) {
             auto Prev = CurrentHash->Prev;
@@ -100,23 +98,23 @@ public:
         }
     }
 
-    HashTable( const HashTable& Other ) = delete;
+    constexpr HashTable( const HashTable& Other ) = delete;
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
-    HashTable( HashTable&& Other ) noexcept {
+    constexpr HashTable( HashTable&& Other ) noexcept {
         assert( !Other.HashResizeInProgressFlag.test( std::memory_order_acquire ) );
         core::SwapRelaxed( EntriesCount, Other.EntriesCount );
         core::SwapRelaxed( MainHash, Other.MainHash );
     }
 
-    HashTable& operator=( const HashTable& Other ) = delete;
+    constexpr HashTable& operator=( const HashTable& Other ) = delete;
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
-    HashTable& operator=( HashTable&& Other ) noexcept {
+    constexpr HashTable& operator=( HashTable&& Other ) noexcept {
         swap( Other );
         return *this;
     }
 
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
-    void swap( HashTable& Other ) noexcept {
+    constexpr void swap( HashTable& Other ) noexcept {
         // can't swap during resizing.
         assert( !HashResizeInProgressFlag.test( std::memory_order_acquire ) && !Other.HashResizeInProgressFlag.test( std::memory_order_acquire ) );
         if ( &Other != this ) {
@@ -125,7 +123,7 @@ public:
         }
     }
 
-    bool Get( const TKey& Key, TValue& OutValue ) const noexcept {
+    constexpr bool Get( const TKey& Key, TValue& OutValue ) const noexcept {
         HashNode* CurrentMainHash = MainHash.load( std::memory_order_acquire );
         if ( Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash ) ) {
             OutValue = CurrentEntry->Value.load( std::memory_order_acquire );
@@ -134,7 +132,7 @@ public:
         return false;
     }
 
-    bool Set( const TKey& Key, const TValue& Value ) noexcept {
+    constexpr bool Set( const TKey& Key, const TValue& Value ) noexcept {
         HashNode* CurrentMainHash = MainHash.load( std::memory_order_acquire );
 
         Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
@@ -148,7 +146,7 @@ public:
     }
 
     // OutValue will be set when Get is successful
-    HashTableStatus GetOrAdd( const TKey& Key, TValue& OutValue, const TValue& InValue ) {
+    constexpr HashTableStatus GetOrAdd( const TKey& Key, TValue& OutValue, const TValue& InValue ) {
         HashNode* CurrentMainHash = MainHash.load( std::memory_order_acquire );
 
         Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
@@ -168,7 +166,7 @@ public:
 
     template <class F, class... Args>
         requires std::is_pointer_v<TValue>
-    HashTableStatus GetOrAddByFunc( const TKey& Key, TValue& OutValue, F&& AllocateValueFunc, Args&&... InArgs ) {
+    constexpr HashTableStatus GetOrAddByFunc( const TKey& Key, TValue& OutValue, F&& AllocateValueFunc, Args&&... InArgs ) {
         HashNode* CurrentMainHash = MainHash.load( std::memory_order_acquire );
 
         Entry* CurrentEntry = InnerGetEntry( Key, CurrentMainHash );
@@ -191,12 +189,12 @@ public:
         return HashTableStatus::ADD_SUCCESS;
     }
 
-    [[nodiscard]] std::size_t GetSize() const noexcept { return EntriesCount.load( std::memory_order_relaxed ); }
+    [[nodiscard]] constexpr std::size_t GetSize() const noexcept { return EntriesCount.load( std::memory_order_relaxed ); }
 
 private:
     struct HashNode {
-        HashNode() = default;
-        explicit HashNode( std::size_t InCapacity ) : Capacity( InCapacity ) {
+        constexpr HashNode() = default;
+        constexpr explicit HashNode( std::size_t InCapacity ) : Capacity( InCapacity ) {
             Entries = HAKLE_OPERATOR_NEW_ARRAY( Entry, InCapacity );
             for ( std::size_t i = 0; i < InCapacity; ++i ) {
                 new ( Entries + i ) Entry();
@@ -204,21 +202,21 @@ private:
             }
         }
 
-        ~HashNode() { HAKLE_DELETE_ARRAY( Entries, Capacity ); }
+        constexpr ~HashNode() { HAKLE_DELETE_ARRAY( Entries, Capacity ); }
 
         struct Entry {
-            Entry() = default;
-            Entry( Entry&& Other ) noexcept {
+            constexpr Entry() = default;
+            constexpr Entry( Entry&& Other ) noexcept {
                 Key.store( Other.Key.load( std::memory_order_relaxed ), std::memory_order_relaxed );
                 Value = Other.Value;
             }
 
-            Entry& operator=( Entry&& Other ) noexcept {
+            constexpr Entry& operator=( Entry&& Other ) noexcept {
                 swap( Other );
                 return *this;
             }
 
-            void swap( Entry& Other ) noexcept {
+            constexpr void swap( Entry& Other ) noexcept {
                 if ( &Other != this ) {
                     core::SwapRelaxed( Key, Other.Key );
                     std::swap( Value, Other.Value );
@@ -236,7 +234,7 @@ private:
 
     using Entry = typename HashNode::Entry;
 
-    Entry* InnerGetEntry( const TKey& Key, HashNode* CurrentMainHash ) const {
+    constexpr Entry* InnerGetEntry( const TKey& Key, HashNode* CurrentMainHash ) const {
         assert( CurrentMainHash != nullptr );
 
         std::size_t HashId = core::HashImpl<TKey>::Hash( Key );
@@ -257,7 +255,6 @@ private:
                         while ( true ) {
                             Index &= MainCapacity - 1;
 
-                            // TODO: figure out memory_order
                             if ( auto Empty = INVALID_KEY; CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong(
                                      Empty, Key, std::memory_order_acquire, std::memory_order_relaxed ) ) {
                                 CurrentMainHash->Entries[ Index ].Value.store( CurrentValue, std::memory_order_release );
@@ -278,7 +275,7 @@ private:
         return nullptr;
     }
 
-    bool InnerAdd( const TKey& Key, const TValue& InValue, HashNode* CurrentMainHash ) {
+    constexpr bool InnerAdd( const TKey& Key, const TValue& InValue, HashNode* CurrentMainHash ) {
         std::size_t NewCount = EntriesCount.fetch_add( 1, std::memory_order_relaxed );
 
         while ( true ) {

@@ -4,13 +4,12 @@
 
 #ifndef BLOCKPOOL_H
 #define BLOCKPOOL_H
+#include "common/CompressPair.h"
 #include "common/allocator.h"
 
-#include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
-
-#include "common/memory.h"
 
 // BlockPool + FreeList
 namespace hakle {
@@ -43,30 +42,30 @@ public:
     using AllocatorType   = ALLOCATOR_TYPE;
     using AllocatorTraits = HakeAllocatorTraits<AllocatorType>;
 
-    FreeList() = default;
-    explicit FreeList( AllocatorType& InAllocator ) : Allocator( InAllocator ) {}
+    constexpr FreeList() = default;
+    constexpr explicit FreeList( AllocatorType& InAllocator ) : AllocatorPair( nullptr, InAllocator ) {}
 
-    ~FreeList() {
-        Node* CurrentNode = Head.load( std::memory_order_relaxed );
+    constexpr ~FreeList() {
+        Node* CurrentNode = Head().load( std::memory_order_relaxed );
         while ( CurrentNode != nullptr ) {
             Node* Next = CurrentNode->FreeListNext.load( std::memory_order_relaxed );
             if ( !CurrentNode->HasOwner ) {
-                AllocatorTraits::Destroy( Allocator, CurrentNode );
-                AllocatorTraits::Deallocate( Allocator, CurrentNode );
+                AllocatorTraits::Destroy( Allocator(), CurrentNode );
+                AllocatorTraits::Deallocate( Allocator(), CurrentNode );
             }
             CurrentNode = Next;
         }
     }
 
-    void Add( Node* InNode ) noexcept {
+    constexpr void Add( Node* InNode ) noexcept {
         // Set AddFlag first
         if ( InNode->FreeListRefs.fetch_add( AddFlag, std::memory_order_relaxed ) == 0 ) {
             InnerAdd( InNode );
         }
     }
 
-    Node* TryGet() noexcept {
-        Node* CurrentHead = Head.load( std::memory_order_relaxed );
+    constexpr Node* TryGet() noexcept {
+        Node* CurrentHead = Head().load( std::memory_order_relaxed );
         while ( CurrentHead != nullptr ) {
             Node*    PrevHead = CurrentHead;
             uint32_t Refs     = CurrentHead->FreeListRefs.load( std::memory_order_relaxed );
@@ -74,13 +73,13 @@ public:
                  || ( !CurrentHead->FreeListRefs.compare_exchange_strong( Refs, Refs + 1, std::memory_order_acquire,
                                                                           std::memory_order_relaxed ) ) )  // try add refs
             {
-                CurrentHead = Head.load( std::memory_order_relaxed );
+                CurrentHead = Head().load( std::memory_order_relaxed );
                 continue;
             }
 
             // try Taken
             Node* Next = CurrentHead->FreeListNext.load( std::memory_order_relaxed );
-            if ( Head.compare_exchange_strong( CurrentHead, Next, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
+            if ( Head().compare_exchange_strong( CurrentHead, Next, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
                 // taken success, decrease refcount twice, for our and list's ref
                 CurrentHead->FreeListRefs.fetch_add( -2, std::memory_order_relaxed );
                 return CurrentHead;
@@ -98,17 +97,17 @@ public:
 
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
     // only useful when there is no contention (e.g. destruction)
-    Node* GetHead() const noexcept { return Head.load( std::memory_order_relaxed ); }
+    constexpr Node* GetHead() const noexcept { return Head().load( std::memory_order_relaxed ); }
 
 private:
     // add when ref count == 0
-    void InnerAdd( Node* InNode ) noexcept {
-        Node* CurrentHead = Head.load( std::memory_order_relaxed );
+    constexpr void InnerAdd( Node* InNode ) noexcept {
+        Node* CurrentHead = Head().load( std::memory_order_relaxed );
         while ( true ) {
             // first update next then refs
             InNode->FreeListNext.store( CurrentHead, std::memory_order_relaxed );
             InNode->FreeListRefs.store( 1, std::memory_order_release );
-            if ( !Head.compare_exchange_strong( CurrentHead, InNode, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
+            if ( !Head().compare_exchange_strong( CurrentHead, InNode, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
                 // check if someone already using it
                 if ( InNode->FreeListRefs.fetch_add( AddFlag - 1, std::memory_order_release ) == 1 ) {
                     continue;
@@ -121,9 +120,13 @@ private:
     static constexpr uint32_t RefsMask = 0x7fffffff;
     static constexpr uint32_t AddFlag  = 0x80000000;
 
-    // TODO: compress allocator
-    AllocatorType      Allocator;
-    std::atomic<Node*> Head{ nullptr };
+    constexpr AllocatorType&            Allocator() noexcept { return AllocatorPair.Second(); }
+    constexpr const AllocatorType&      Allocator() const noexcept { return AllocatorPair.Second(); }
+    constexpr std::atomic<Node*>&       Head() noexcept { return AllocatorPair.First(); }
+    constexpr const std::atomic<Node*>& Head() const noexcept { return AllocatorPair.First(); }
+
+    // compressed allocator
+    CompressPair<std::atomic<Node*>, AllocatorType> AllocatorPair{};
 };
 
 template <class BLOCK_TYPE, class ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
@@ -132,29 +135,29 @@ public:
     using AllocatorType   = ALLOCATOR_TYPE;
     using AllocatorTraits = HakeAllocatorTraits<AllocatorType>;
 
-    explicit BlockPool( std::size_t InSize ) : Size( InSize ) {
-        Head = AllocatorTraits::Allocate( Allocator, Size );
-        for ( std::size_t i = 0; i < Size; i++ ) {
-            AllocatorTraits::Construct( Allocator, Head + i );
+    constexpr explicit BlockPool( std::size_t InSize ) : AllocatorPair{ InSize, ValueInitTag{} } {
+        Head = AllocatorTraits::Allocate( Allocator(), Size() );
+        for ( std::size_t i = 0; i < Size(); i++ ) {
+            AllocatorTraits::Construct( Allocator(), Head + i );
             Head[ i ].HasOwner = true;
         }
     }
 
-    BlockPool( std::size_t InSize, AllocatorType& InAllocator ) : Size( InSize ), Allocator( InAllocator ) {
-        Head = AllocatorTraits::Allocate( Allocator, Size );
-        for ( std::size_t i = 0; i < Size; i++ ) {
-            AllocatorTraits::Construct( Allocator, Head + i );
+    constexpr BlockPool( std::size_t InSize, AllocatorType& InAllocator ) : AllocatorPair{ InSize, InAllocator } {
+        Head = AllocatorTraits::Allocate( Allocator(), Size() );
+        for ( std::size_t i = 0; i < Size(); i++ ) {
+            AllocatorTraits::Construct( Allocator(), Head + i );
             Head[ i ].HasOwner = true;
         }
     }
 
-    ~BlockPool() {
-        AllocatorTraits::Destroy( Allocator, Head, Size );
-        AllocatorTraits::Deallocate( Allocator, Head, Size );
+    constexpr ~BlockPool() {
+        AllocatorTraits::Destroy( Allocator(), Head, Size() );
+        AllocatorTraits::Deallocate( Allocator(), Head, Size() );
     }
 
-    BLOCK_TYPE* GetBlock() noexcept {
-        if ( Index.load( std::memory_order_relaxed ) >= Size )
+    constexpr BLOCK_TYPE* GetBlock() noexcept {
+        if ( Index.load( std::memory_order_relaxed ) >= Size() )
             return nullptr;
 
         std::size_t CurrentIndex = Index.fetch_add( 1, std::memory_order_relaxed );
@@ -162,15 +165,19 @@ public:
     }
 
 private:
-    // TODO: compress allocator
-    AllocatorType            Allocator;
-    std::size_t              Size{ 0 };
-    std::atomic<std::size_t> Index{ 0 };
-    BLOCK_TYPE*              Head{ nullptr };
+    constexpr AllocatorType&       Allocator() noexcept { return AllocatorPair.Second(); }
+    constexpr const AllocatorType& Allocator() const noexcept { return AllocatorPair.Second(); }
+    constexpr std::size_t&         Size() noexcept { return AllocatorPair.First(); }
+    constexpr const std::size_t&   Size() const noexcept { return AllocatorPair.First(); }
+
+    // compressed allocator
+    CompressPair<std::size_t, AllocatorType> AllocatorPair{};
+    std::atomic<std::size_t>                 Index{ 0 };
+    BLOCK_TYPE*                              Head{ nullptr };
 };
 
 template <class BLOCK_TYPE, class ALLOCATOR_TYPE>
-class BlockManagerBase {
+class BlockManagerBase : private CompressPairElem<ALLOCATOR_TYPE, 0> {
 public:
     using AllocatorType                    = ALLOCATOR_TYPE;
     using BlockAllocatorTraits             = HakeAllocatorTraits<AllocatorType>;
@@ -179,19 +186,21 @@ public:
     constexpr static std::size_t BlockSize = BlockTraits::BlockSize;
     using ValueType                        = typename BlockTraits::ValueType;
 
-    BlockManagerBase() = default;
-    explicit BlockManagerBase( AllocatorType& InAllocator ) : Allocator( InAllocator ) {}
+    constexpr BlockManagerBase() = default;
+    constexpr explicit BlockManagerBase( AllocatorType& InAllocator ) : Base( InAllocator ) {}
     virtual ~BlockManagerBase() = default;
 
     enum class AllocMode { CanAlloc, CannotAlloc };
 
-    virtual BlockType* RequisitionBlock( AllocMode InMode ) = 0;
-    virtual void       ReturnBlocks( BlockType* InBlock )   = 0;
-    virtual void       ReturnBlock( BlockType* InBlock )    = 0;
+    virtual constexpr BlockType* RequisitionBlock( AllocMode InMode ) = 0;
+    virtual constexpr void       ReturnBlocks( BlockType* InBlock )   = 0;
+    virtual constexpr void       ReturnBlock( BlockType* InBlock )    = 0;
 
-protected:
-    // TODO: compress the allocator type
-    AllocatorType Allocator;
+    constexpr AllocatorType&       Allocator() noexcept { return Base::Get(); }
+    constexpr const AllocatorType& Allocator() const noexcept { return Base::Get(); }
+
+private:
+    using Base = CompressPairElem<ALLOCATOR_TYPE, 0>;
 };
 
 // We set a block pool and a free list
@@ -207,11 +216,12 @@ public:
 
     using AllocMode = typename BaseManager::AllocMode;
 
-    explicit HakleBlockManager( std::size_t InSize ) : Pool( InSize ) {}
-    HakleBlockManager( std::size_t InSize, AllocatorType& InAllocator ) : BaseManager( InAllocator ), Pool( InSize, InAllocator ), FreeList( InAllocator ) {}
-    ~HakleBlockManager() override = default;
+    constexpr explicit HakleBlockManager( std::size_t InSize ) : Pool( InSize ) {}
+    constexpr HakleBlockManager( std::size_t InSize, AllocatorType& InAllocator )
+        : BaseManager( InAllocator ), Pool( InSize, InAllocator ), FreeList( InAllocator ) {}
+    constexpr ~HakleBlockManager() override = default;
 
-    BlockType* RequisitionBlock( AllocMode Mode ) override {
+    constexpr BlockType* RequisitionBlock( AllocMode Mode ) override {
         BlockType* Block = Pool.GetBlock();
         if ( Block != nullptr ) {
             return Block;
@@ -230,14 +240,14 @@ public:
         else {
             // When alloc mode is CanAlloc, we allocate a new block
             // If user finishes using the block, it must be returned to the free list
-            BlockType* NewBlock = BlockAllocatorTraits::Allocate( this->Allocator );
-            BlockAllocatorTraits::Construct( this->Allocator, NewBlock );
+            BlockType* NewBlock = BlockAllocatorTraits::Allocate( this->Allocator() );
+            BlockAllocatorTraits::Construct( this->Allocator(), NewBlock );
             return NewBlock;
         }
     }
 
-    void ReturnBlock( BlockType* InBlock ) override { FreeList.Add( InBlock ); }
-    void ReturnBlocks( BlockType* InBlock ) override {
+    constexpr void ReturnBlock( BlockType* InBlock ) override { FreeList.Add( InBlock ); }
+    constexpr void ReturnBlocks( BlockType* InBlock ) override {
         while ( InBlock != nullptr ) {
             BlockType* Next = InBlock->Next;
             FreeList.Add( InBlock );
