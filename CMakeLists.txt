@@ -85,9 +85,13 @@ target_link_libraries(blockpooltest PRIVATE gtest_main)
 add_executable(explicitqueuetest tests/explicitqueuetest.cpp)
 target_link_libraries(explicitqueuetest PRIVATE gtest_main)
 
+add_executable(explicitqueuetest_exception tests/explicitqueuetest_exception.cpp)
+target_link_libraries(explicitqueuetest_exception PRIVATE gtest_main)
+
 add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
 add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)
 add_test(NAME hashtabletest COMMAND hashtabletest)
 add_test(NAME freelisttest COMMAND freelisttest)
 add_test(NAME blockpooltest COMMAND blockpooltest)
 add_test(NAME explicitqueuetest COMMAND explicitqueuetest)
+add_test(NAME explicitqueuetest_exception COMMAND explicitqueuetest_exception)

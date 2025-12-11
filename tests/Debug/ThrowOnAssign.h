@@ -1,0 +1,36 @@
+//
+// Created by admin on 2025/12/11.
+//
+
+#ifndef LOCKFREESTRUCTURES_THROWONASSIGN_H
+#define LOCKFREESTRUCTURES_THROWONASSIGN_H
+
+// ThrowOnAssign.h
+#pragma once
+#include <atomic>
+#include <stdexcept>
+#include "ThrowOnCtor.h"
+
+struct ThrowOnAssign {
+    static std::atomic<int> assignCount;
+    static int throwOnAssign;
+
+    ThrowOnCtor inner;  // 真正的值
+
+    ThrowOnAssign() = default;
+
+    // 用于 DequeueBulk: *it = std::move_if_noexcept(Value)
+    ThrowOnAssign& operator=(ThrowOnCtor&& rhs) {
+        int n = ++assignCount;
+        if (throwOnAssign >= 0 && n == throwOnAssign) {
+            throw std::runtime_error("ThrowOnAssign: assign injection");
+        }
+        inner = std::move(rhs);
+        return *this;
+    }
+};
+
+inline std::atomic<int> ThrowOnAssign::assignCount{0};
+inline int ThrowOnAssign::throwOnAssign = -1;
+
+#endif  // LOCKFREESTRUCTURES_THROWONASSIGN_H
