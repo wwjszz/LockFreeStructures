@@ -161,14 +161,14 @@ public:
             return nullptr;
 
         std::size_t CurrentIndex = Index.fetch_add( 1, std::memory_order_relaxed );
-        return Head + CurrentIndex;
+        return CurrentIndex < Size() ? ( Head + CurrentIndex ) : nullptr;
     }
 
 private:
     constexpr AllocatorType&       Allocator() noexcept { return AllocatorPair.Second(); }
     constexpr const AllocatorType& Allocator() const noexcept { return AllocatorPair.Second(); }
     constexpr std::size_t&         Size() noexcept { return AllocatorPair.First(); }
-    constexpr const std::size_t&   Size() const noexcept { return AllocatorPair.First(); }
+    [[nodiscard]] constexpr const std::size_t&   Size() const noexcept { return AllocatorPair.First(); }
 
     // compressed allocator
     CompressPair<std::size_t, AllocatorType> AllocatorPair{};

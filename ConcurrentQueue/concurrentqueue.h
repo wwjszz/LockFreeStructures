@@ -184,7 +184,7 @@ private:
 
 public:
     constexpr explicit ExplicitQueue( std::size_t InSize, BLOCK_MANAGER_TYPE& InBlockManager ) : BlockManager( InBlockManager ) {
-        std::size_t InitialSize = CeilToPow2( InSize );
+        std::size_t InitialSize = CeilToPow2( InSize ) >> 1;
         if ( InitialSize < 2 ) {
             InitialSize = 2;
         }
@@ -265,7 +265,7 @@ public:
             else {
                 // we need to find a new block index and get a new block from block manager
                 // TODO: add MAX_SIZE check
-                if ( CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
+                if ( !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
                     return false;
                 }
 
@@ -371,7 +371,7 @@ public:
                 CurrentTailIndex += BlockSize;
                 --BlockCountNeed;
                 // TODO: add MAX_SIZE check
-                if ( CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
+                if ( !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
                     return RollBack();
                 }
 
