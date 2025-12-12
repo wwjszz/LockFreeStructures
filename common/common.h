@@ -44,6 +44,11 @@
 #define HAKLE_CPP20_CONSTEXPR
 #endif
 
+#if HAKLE_CPP_VERSION >= 14
+#define HAKLE_CPP14_CONSTEXPR constexpr
+#else
+#define HAKLE_CPP14_CONSTEXPR
+#endif
 
 #define HAKLE_TRY try
 #define HAKLE_CATCH( ... ) catch ( __VA_ARGS__ )

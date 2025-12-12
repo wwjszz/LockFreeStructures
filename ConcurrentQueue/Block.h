@@ -5,6 +5,7 @@
 #ifndef LOCKFREESTRUCTURES_BLOCK_H
 #define LOCKFREESTRUCTURES_BLOCK_H
 #include "BlockManager.h"
+#include "common/common.h"
 
 #include <array>
 #include <atomic>
@@ -40,7 +41,7 @@ template <std::size_t BLOCK_SIZE>
 struct FlagsCheckPolicy : BlockCheckPolicy {
     HAKLE_CPP20_CONSTEXPR ~FlagsCheckPolicy() override = default;
 
-    [[nodiscard]] constexpr bool IsEmpty() const override {
+    [[nodiscard]] HAKLE_CPP20_CONSTEXPR bool IsEmpty() const override {
         for ( auto& Flag : Flags ) {
             if ( !Flag.load( std::memory_order_relaxed ) ) {
                 return false;
@@ -51,12 +52,12 @@ struct FlagsCheckPolicy : BlockCheckPolicy {
         return true;
     }
 
-    constexpr bool SetEmpty( std::size_t Index ) override {
+    HAKLE_CPP20_CONSTEXPR bool SetEmpty( std::size_t Index ) override {
         Flags[ Index ].store( 1, std::memory_order_release );
         return false;
     }
 
-    constexpr bool SetSomeEmpty( std::size_t Index, std::size_t Count ) override {
+    HAKLE_CPP20_CONSTEXPR bool SetSomeEmpty( std::size_t Index, std::size_t Count ) override {
         std::atomic_thread_fence( std::memory_order_release );
 
         for ( std::size_t i = 0; i < Count; ++i ) {
@@ -65,13 +66,13 @@ struct FlagsCheckPolicy : BlockCheckPolicy {
         return false;
     }
 
-    constexpr void SetAllEmpty() override {
+    HAKLE_CPP20_CONSTEXPR void SetAllEmpty() override {
         for ( std::size_t i = 0; i < BLOCK_SIZE; ++i ) {
             Flags[ i ].store( 1, std::memory_order_relaxed );
         }
     }
 
-    constexpr void Reset() override {
+    HAKLE_CPP20_CONSTEXPR void Reset() override {
         for ( auto& Flag : Flags ) {
             Flag.store( 0, std::memory_order_relaxed );
         }
@@ -84,7 +85,7 @@ template <std::size_t BLOCK_SIZE>
 struct CounterCheckPolicy : BlockCheckPolicy {
     HAKLE_CPP20_CONSTEXPR ~CounterCheckPolicy() override = default;
 
-    [[nodiscard]] constexpr bool IsEmpty() const override {
+    [[nodiscard]] HAKLE_CPP20_CONSTEXPR bool IsEmpty() const override {
         if ( Counter.load( std::memory_order_relaxed ) == BLOCK_SIZE ) {
             std::atomic_thread_fence( std::memory_order_acquire );
             return true;
@@ -93,19 +94,19 @@ struct CounterCheckPolicy : BlockCheckPolicy {
     }
 
     // Increments the counter and returns true if the block is now empty
-    constexpr bool SetEmpty( [[maybe_unused]] std::size_t Index ) override {
+    HAKLE_CPP20_CONSTEXPR bool SetEmpty( [[maybe_unused]] std::size_t Index ) override {
         std::size_t OldCounter = Counter.fetch_add( 1, std::memory_order_release );
         return OldCounter + 1 == BLOCK_SIZE;
     }
 
-    constexpr bool SetSomeEmpty( [[maybe_unused]] std::size_t Index, std::size_t Count ) override {
+    HAKLE_CPP20_CONSTEXPR bool SetSomeEmpty( [[maybe_unused]] std::size_t Index, std::size_t Count ) override {
         std::size_t OldCounter = Counter.fetch_add( Count, std::memory_order_release );
         return OldCounter + Count == BLOCK_SIZE;
     }
 
-    constexpr void SetAllEmpty() override { Counter.store( BLOCK_SIZE, std::memory_order_relaxed ); }
+    HAKLE_CPP20_CONSTEXPR void SetAllEmpty() override { Counter.store( BLOCK_SIZE, std::memory_order_relaxed ); }
 
-    constexpr void Reset() override { Counter.store( 0, std::memory_order_relaxed ); }
+    HAKLE_CPP20_CONSTEXPR void Reset() override { Counter.store( 0, std::memory_order_relaxed ); }
 
     std::atomic<std::size_t> Counter;
 };

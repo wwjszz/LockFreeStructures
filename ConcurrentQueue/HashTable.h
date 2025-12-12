@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cassert>
 
+#include "common/common.h"
 #include "common/memory.h"
 
 #include <iostream>
@@ -91,7 +92,7 @@ public:
         MainHash.store( Temp, std::memory_order_relaxed );
     }
 
-    constexpr ~HashTable() {
+    HAKLE_CPP20_CONSTEXPR ~HashTable() {
         auto CurrentHash = MainHash.load( std::memory_order_relaxed );
         while ( CurrentHash != nullptr ) {
             auto Prev = CurrentHash->Prev;
@@ -204,7 +205,7 @@ private:
             }
         }
 
-        constexpr ~HashNode() { HAKLE_DELETE_ARRAY( Entries, Capacity ); }
+        HAKLE_CPP20_CONSTEXPR ~HashNode() { HAKLE_DELETE_ARRAY( Entries, Capacity ); }
 
         struct Entry {
             constexpr Entry() = default;

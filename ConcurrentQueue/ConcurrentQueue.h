@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
-#include <memory>
 #include <type_traits>
 
 namespace hakle {

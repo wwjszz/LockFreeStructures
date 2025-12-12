@@ -141,7 +141,7 @@ inline constexpr T* HakleOperatorNewArray( const std::size_t N ) {
 }
 
 template <class T>
-inline constexpr void HakleOperatorDelete( T* ptr ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void HakleOperatorDelete( T* ptr ) noexcept {
     ::operator delete( ptr );
 }
 
@@ -151,23 +151,23 @@ inline constexpr T* HakleConstruct( T* ptr, Args&&... InArgs ) {
 }
 
 template <class T>
-inline constexpr void HakleDestroy( T* ptr ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void HakleDestroy( T* ptr ) noexcept {
     if HAKLE_LIKELY ( ptr ) {
         ptr->~T();
     }
 }
 
 template <class T>
-inline constexpr void HakleDestroyArray( T* ptr, const std::size_t N ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void HakleDestroyArray( T* ptr, const std::size_t N ) noexcept {
     if HAKLE_LIKELY ( ptr ) {
         for ( std::size_t i = 0; i < N; ++i ) {
-                ptr[ i ].~T();
+            ptr[ i ].~T();
         }
     }
 }
 
 template <class T, class... Args>
-inline constexpr T* HakleNew( Args&&... InArgs ) {
+inline HAKLE_CPP14_CONSTEXPR T* HakleNew( Args&&... InArgs ) {
     T* Ptr = HakleOperatorNew<T>();
     if HAKLE_LIKELY ( !Ptr )
         return nullptr;
@@ -175,7 +175,7 @@ inline constexpr T* HakleNew( Args&&... InArgs ) {
 }
 
 template <class T>
-inline constexpr void HakleDelete( T* ptr ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void HakleDelete( T* ptr ) noexcept {
     if HAKLE_LIKELY ( ptr ) {
         HakleDestroy( ptr );
         HakleOperatorDelete( ptr );
@@ -183,7 +183,7 @@ inline constexpr void HakleDelete( T* ptr ) noexcept {
 }
 
 template <class T>
-inline constexpr void HakleDeleteArray( T* ptr, const std::size_t N ) noexcept {
+inline HAKLE_CPP14_CONSTEXPR void HakleDeleteArray( T* ptr, const std::size_t N ) noexcept {
     if HAKLE_LIKELY ( ptr ) {
         HakleDestroyArray( ptr, N );
         HakleOperatorDelete( ptr );
@@ -191,7 +191,7 @@ inline constexpr void HakleDeleteArray( T* ptr, const std::size_t N ) noexcept {
 }
 
 template <class T>
-inline constexpr T* HakleCreateArray( const std::size_t N ) {
+inline HAKLE_CPP14_CONSTEXPR T* HakleCreateArray( const std::size_t N ) {
     T* ptr = HakleOperatorNewArray<T>( N );
     for ( std::size_t i = 0; i < N; ++i ) {
         HakleConstruct( ptr + i );
