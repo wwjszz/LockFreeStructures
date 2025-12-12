@@ -1,10 +1,12 @@
 // ExplicitQueueExceptionTest.cpp
+#include "ConcurrentQueue/Block.h"
+
 #include <gtest/gtest.h>
 #include <iostream>
 #include <thread>
 #include <vector>
 
-#include "ConcurrentQueue/concurrentqueue.h"  // 浣犵殑 ExplicitQueue 瀹氫箟
+#include "ConcurrentQueue/ConcurrentQueue.h"  // 浣犵殑 ExplicitQueue 瀹氫箟
 #include "Debug/ThrowOnAssign.h"
 #include "Debug/ThrowOnCtor.h"
 
@@ -17,7 +19,7 @@ constexpr std::size_t kBlockSize = 64;
 
 using Block        = HakleFlagsBlock<ThrowOnCtor, kBlockSize>;
 using BlockManager = HakleBlockManager<Block>;
-using Queue        = ExplicitQueue<Block, BlockManager>;
+using Queue        = FastQueue<Block, BlockManager>;
 using AllocMode    = Queue::AllocMode;
 
 // 如果你的 BlockManager 类型名不同，改一下上面的 using 即可。

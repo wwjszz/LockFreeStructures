@@ -9,8 +9,8 @@
 #include <vector>
 #include <algorithm>
 
+#include "../ConcurrentQueue/BlockManager.h"
 #include "../ConcurrentQueue/HashTable.h"
-#include "../ConcurrentQueue/BlockPool.h"
 
 #include <iostream>
 #include <limits>

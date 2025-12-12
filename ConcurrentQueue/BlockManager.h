@@ -2,8 +2,8 @@
 // Created by wwjszz on 25-11-24.
 //
 
-#ifndef BLOCKPOOL_H
-#define BLOCKPOOL_H
+#ifndef BLOCKMANAGER_H
+#define BLOCKMANAGER_H
 #include "common/CompressPair.h"
 #include "common/allocator.h"
 
@@ -262,4 +262,4 @@ private:
 
 }  // namespace hakle
 
-#endif  // BLOCKPOOL_H
+#endif  // BLOCKMANAGER_H

@@ -1,7 +1,9 @@
 // test/queue_test.cpp
+#include "ConcurrentQueue/Block.h"
+
 #include <gtest/gtest.h>
 
-#include "ConcurrentQueue/concurrentqueue.h"
+#include "ConcurrentQueue/ConcurrentQueue.h"
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -21,8 +23,8 @@ using TestFlagsAllocator        = HakleAllocator<TestFlagsBlock>;
 using TestFlagsBlockManager     = HakleBlockManager<TestFlagsBlock, TestFlagsAllocator>;
 
 // 定义测试队列类型
-using TestFlagsQueue   = ExplicitQueue<TestFlagsBlock, TestFlagsBlockManager>;
-using TestCounterQueue = ExplicitQueue<TestCounterBlock, TestCounterBlockManager>;
+using TestFlagsQueue   = FastQueue<TestFlagsBlock, TestFlagsBlockManager>;
+using TestCounterQueue = FastQueue<TestCounterBlock, TestCounterBlockManager>;
 
 // 辅助：等待一段时间让操作完成
 void SleepFor( std::int64_t ms ) { std::this_thread::sleep_for( std::chrono::milliseconds( ms ) ); }
@@ -125,7 +127,7 @@ struct ThrowingType {
 };
 using ThrowingBlock        = HakleFlagsBlock<ThrowingType, kBlockSize>;
 using ThrowingBlockManager = HakleBlockManager<ThrowingBlock>;
-using ThrowingQueue        = ExplicitQueue<ThrowingBlock>;
+using ThrowingQueue        = FastQueue<ThrowingBlock>;
 
 TEST( ConcurrentQueueTest, ExceptionSafety ) {
     ThrowingBlockManager blockManager( POOL_SIZE );
@@ -280,7 +282,7 @@ struct ExceptionTest {
 TEST( ConcurrentQueueTest, MultiConsumerStressTestWithException ) {
     using ExceptionBlock       = HakleFlagsBlock<ExceptionTest, kBlockSize>;
     using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
-    using ExceptionQueue       = ExplicitQueue<ExceptionBlock>;
+    using ExceptionQueue       = FastQueue<ExceptionBlock>;
     ExceptionBlockManger blockManager( POOL_SIZE );
     ExceptionQueue       queue( 100, blockManager );
     using AllocMode = ExceptionQueue::AllocMode;
