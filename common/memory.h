@@ -5,6 +5,7 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#include <new>
 #include <utility>
 
 #include "common.h"
@@ -160,9 +161,7 @@ template <class T>
 inline constexpr void HakleDestroyArray( T* ptr, const std::size_t N ) noexcept {
     if HAKLE_LIKELY ( ptr ) {
         for ( std::size_t i = 0; i < N; ++i ) {
-            if HAKLE_LIKELY ( ptr[ i ] ) {
                 ptr[ i ].~T();
-            }
         }
     }
 }

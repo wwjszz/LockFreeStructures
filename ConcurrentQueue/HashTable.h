@@ -55,11 +55,13 @@ namespace core {
 
     template <class T>
     struct HashImpl : HashDispatch<sizeof( T )> {
-        static_assert( std::is_integral_v<T>, "HashImpl<T> only supports integral types" );
+        static_assert( std::is_integral<T>::value, "HashImpl<T> only supports integral types" );
     };
 
     template <class T>
-        requires std::is_integral_v<T>
+#if HAKLE_CPP_VERSION >= 20
+        requires std::is_integral<T>::value
+#endif
     T Hash( T Key ) noexcept {
         return HashImpl<T>::Hash( Key );
     }
@@ -101,7 +103,6 @@ public:
     constexpr HashTable( const HashTable& Other ) = delete;
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
     constexpr HashTable( HashTable&& Other ) noexcept {
-        assert( !Other.HashResizeInProgressFlag.test( std::memory_order_acquire ) );
         core::SwapRelaxed( EntriesCount, Other.EntriesCount );
         core::SwapRelaxed( MainHash, Other.MainHash );
     }
@@ -116,7 +117,6 @@ public:
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
     constexpr void swap( HashTable& Other ) noexcept {
         // can't swap during resizing.
-        assert( !HashResizeInProgressFlag.test( std::memory_order_acquire ) && !Other.HashResizeInProgressFlag.test( std::memory_order_acquire ) );
         if ( &Other != this ) {
             core::SwapRelaxed( EntriesCount, Other.EntriesCount );
             core::SwapRelaxed( MainHash, Other.MainHash );
@@ -165,7 +165,9 @@ public:
     }
 
     template <class F, class... Args>
+#if HAKLE_CPP_VERSION >= 20
         requires std::is_pointer_v<TValue>
+#endif
     constexpr HashTableStatus GetOrAddByFunc( const TKey& Key, TValue& OutValue, F&& AllocateValueFunc, Args&&... InArgs ) {
         HashNode* CurrentMainHash = MainHash.load( std::memory_order_acquire );
 
@@ -254,9 +256,9 @@ private:
 
                         while ( true ) {
                             Index &= MainCapacity - 1;
-
-                            if ( auto Empty = INVALID_KEY; CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong(
-                                     Empty, Key, std::memory_order_acquire, std::memory_order_relaxed ) ) {
+                            auto Empty = INVALID_KEY;
+                            if ( CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong( Empty, Key, std::memory_order_acquire,
+                                                                                                std::memory_order_relaxed ) ) {
                                 CurrentMainHash->Entries[ Index ].Value.store( CurrentValue, std::memory_order_release );
                                 break;
                             }
@@ -310,8 +312,9 @@ private:
 
                     TKey CurrentKey = CurrentMainHash->Entries[ Index ].Key.load( std::memory_order_relaxed );
                     if ( CurrentKey == INVALID_KEY ) {
-                        if ( TKey Empty = INVALID_KEY; CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong(
-                                 Empty, Key, std::memory_order_acq_rel, std::memory_order_relaxed ) ) {
+                        TKey Empty = INVALID_KEY;
+                        if ( CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong( Empty, Key, std::memory_order_acq_rel,
+                                                                                            std::memory_order_relaxed ) ) {
                             CurrentMainHash->Entries[ Index ].Value.store( InValue, std::memory_order_release );
                             break;
                         }

@@ -70,11 +70,4 @@ private:
     }
 };
 
-inline std::atomic<int> ThrowOnCtor::liveCount{0};
-inline std::atomic<int> ThrowOnCtor::ctorCount{0};
-inline std::atomic<int> ThrowOnCtor::dtorCount{0};
-inline std::atomic<int> ThrowOnCtor::copyCount{0};
-inline std::atomic<int> ThrowOnCtor::moveCount{0};
-inline int ThrowOnCtor::throwOnCtor = -1;
-
 #endif  // LOCKFREESTRUCTURES_THROWONCTOR_H

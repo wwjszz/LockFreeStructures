@@ -12,11 +12,14 @@
 
 namespace hakle {
 
+template <class...>
+using VoidT = void;
+
 template <class T, class U, class = void>
 struct HasRebindOther : std::false_type {};
 
 template <class T, class U>
-struct HasRebindOther<T, U, std::void_t<typename T::template rebind<U>::other>> : std::true_type {};
+struct HasRebindOther<T, U, VoidT<typename T::template rebind<U>::other>> : std::true_type {};
 
 template <class T, class U, bool = HasRebindOther<T, U>::value>
 struct AllocatorTraitsRebind {

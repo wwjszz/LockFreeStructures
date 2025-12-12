@@ -2,7 +2,7 @@
 project(LockFreeStructures CXX)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD_REQUIRED OFF)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
@@ -82,10 +82,10 @@ target_link_libraries(freelisttest PRIVATE gtest_main)
 add_executable(blockpooltest tests/blockpooltest.cpp)
 target_link_libraries(blockpooltest PRIVATE gtest_main)
 
-add_executable(fastqueuetest tests/fastqueuetest.cpp)
+add_executable(fastqueuetest tests/fastqueuetest.cpp tests/Debug/ThrowOn.cpp)
 target_link_libraries(fastqueuetest PRIVATE gtest_main)
 
-add_executable(fastqueuetest_exception tests/fastqueuetest_exception.cpp)
+add_executable(fastqueuetest_exception tests/fastqueuetest_exception.cpp tests/Debug/ThrowOn.cpp)
 target_link_libraries(fastqueuetest_exception PRIVATE gtest_main)
 
 add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)

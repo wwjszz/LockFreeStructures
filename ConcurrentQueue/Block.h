@@ -27,18 +27,18 @@ template <class T, std::size_t BLOCK_SIZE>
 using HakleCounterBlock = HakleBlock<T, BLOCK_SIZE, CounterCheckPolicy<BLOCK_SIZE>>;
 
 struct BlockCheckPolicy {
-    virtual constexpr ~BlockCheckPolicy() = default;
+    virtual HAKLE_CPP20_CONSTEXPR ~BlockCheckPolicy() = default;
 
-    [[nodiscard]] virtual bool IsEmpty() const                                      = 0;
-    virtual constexpr bool     SetEmpty( std::size_t Index )                        = 0;
-    virtual constexpr bool     SetSomeEmpty( std::size_t Index, std::size_t Count ) = 0;
-    virtual constexpr void     SetAllEmpty()                                        = 0;
-    virtual constexpr void     Reset()                                              = 0;
+    [[nodiscard]] virtual bool         IsEmpty() const                                      = 0;
+    virtual HAKLE_CPP20_CONSTEXPR bool SetEmpty( std::size_t Index )                        = 0;
+    virtual HAKLE_CPP20_CONSTEXPR bool SetSomeEmpty( std::size_t Index, std::size_t Count ) = 0;
+    virtual HAKLE_CPP20_CONSTEXPR void SetAllEmpty()                                        = 0;
+    virtual HAKLE_CPP20_CONSTEXPR void Reset()                                              = 0;
 };
 
 template <std::size_t BLOCK_SIZE>
 struct FlagsCheckPolicy : BlockCheckPolicy {
-    constexpr ~FlagsCheckPolicy() override = default;
+    HAKLE_CPP20_CONSTEXPR ~FlagsCheckPolicy() override = default;
 
     [[nodiscard]] constexpr bool IsEmpty() const override {
         for ( auto& Flag : Flags ) {
@@ -82,7 +82,7 @@ struct FlagsCheckPolicy : BlockCheckPolicy {
 
 template <std::size_t BLOCK_SIZE>
 struct CounterCheckPolicy : BlockCheckPolicy {
-    constexpr ~CounterCheckPolicy() override = default;
+    HAKLE_CPP20_CONSTEXPR ~CounterCheckPolicy() override = default;
 
     [[nodiscard]] constexpr bool IsEmpty() const override {
         if ( Counter.load( std::memory_order_relaxed ) == BLOCK_SIZE ) {
@@ -121,7 +121,15 @@ struct HakleBlock : FreeListNode<HakleBlock<T, BLOCK_SIZE, Policy>>, Policy {
     constexpr T*       operator[]( std::size_t Index ) noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
     constexpr const T* operator[]( std::size_t Index ) const noexcept { return reinterpret_cast<T*>( Elements.data() ) + Index; }
 
-    alignas( T ) std::array<std::byte, sizeof( T ) * BLOCK_SIZE> Elements{};
+    alignas( T ) std::array<
+#if HAKLE_CPP_VERSION >= 17
+        std::byte
+#else
+        unsigned char
+#endif
+        ,
+        sizeof( T ) * BLOCK_SIZE> Elements{};
+
     HakleBlock* Next{ nullptr };
 };
 

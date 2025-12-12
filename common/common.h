@@ -38,6 +38,13 @@
 #define HAKLE_NOEXCEPT( expr ) true
 #endif
 
+#if HAKLE_CPP_VERSION >= 20
+#define HAKLE_CPP20_CONSTEXPR constexpr
+#else
+#define HAKLE_CPP20_CONSTEXPR
+#endif
+
+
 #define HAKLE_TRY try
 #define HAKLE_CATCH( ... ) catch ( __VA_ARGS__ )
 #define HAKLE_THROW( expr ) throw( expr )

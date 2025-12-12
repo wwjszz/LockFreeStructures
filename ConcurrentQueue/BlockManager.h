@@ -37,7 +37,7 @@ struct FreeListNode : MemoryBase {
 template <class Node, class ALLOCATOR_TYPE = HakleAllocator<Node>>
 class FreeList {
 public:
-    static_assert( std::is_base_of_v<FreeListNode<Node>, Node>, "Node must be derived from FreeListNode<Node>" );
+    static_assert( std::is_base_of<FreeListNode<Node>, Node>::value, "Node must be derived from FreeListNode<Node>" );
 
     using AllocatorType   = ALLOCATOR_TYPE;
     using AllocatorTraits = HakeAllocatorTraits<AllocatorType>;
@@ -45,7 +45,7 @@ public:
     constexpr FreeList() = default;
     constexpr explicit FreeList( AllocatorType& InAllocator ) : AllocatorPair( nullptr, InAllocator ) {}
 
-    constexpr ~FreeList() {
+    HAKLE_CPP20_CONSTEXPR ~FreeList() {
         Node* CurrentNode = Head().load( std::memory_order_relaxed );
         while ( CurrentNode != nullptr ) {
             Node* Next = CurrentNode->FreeListNext.load( std::memory_order_relaxed );
@@ -151,7 +151,7 @@ public:
         }
     }
 
-    constexpr ~BlockPool() {
+    HAKLE_CPP20_CONSTEXPR ~BlockPool() {
         AllocatorTraits::Destroy( Allocator(), Head, Size() );
         AllocatorTraits::Deallocate( Allocator(), Head, Size() );
     }
@@ -192,9 +192,9 @@ public:
 
     enum class AllocMode { CanAlloc, CannotAlloc };
 
-    virtual constexpr BlockType* RequisitionBlock( AllocMode InMode ) = 0;
-    virtual constexpr void       ReturnBlocks( BlockType* InBlock )   = 0;
-    virtual constexpr void       ReturnBlock( BlockType* InBlock )    = 0;
+    virtual HAKLE_CPP20_CONSTEXPR BlockType* RequisitionBlock( AllocMode InMode ) = 0;
+    virtual HAKLE_CPP20_CONSTEXPR void       ReturnBlocks( BlockType* InBlock )   = 0;
+    virtual HAKLE_CPP20_CONSTEXPR void       ReturnBlock( BlockType* InBlock )    = 0;
 
     constexpr AllocatorType&       Allocator() noexcept { return Base::Get(); }
     constexpr const AllocatorType& Allocator() const noexcept { return Base::Get(); }
@@ -219,7 +219,7 @@ public:
     constexpr explicit HakleBlockManager( std::size_t InSize ) : Pool( InSize ) {}
     constexpr HakleBlockManager( std::size_t InSize, AllocatorType& InAllocator )
         : BaseManager( InAllocator ), Pool( InSize, InAllocator ), FreeList( InAllocator ) {}
-    constexpr ~HakleBlockManager() override = default;
+    HAKLE_CPP20_CONSTEXPR ~HakleBlockManager() override = default;
 
     constexpr BlockType* RequisitionBlock( AllocMode Mode ) override {
         BlockType* Block = Pool.GetBlock();

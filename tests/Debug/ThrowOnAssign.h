@@ -30,7 +30,4 @@ struct ThrowOnAssign {
     }
 };
 
-inline std::atomic<int> ThrowOnAssign::assignCount{0};
-inline int ThrowOnAssign::throwOnAssign = -1;
-
 #endif  // LOCKFREESTRUCTURES_THROWONASSIGN_H

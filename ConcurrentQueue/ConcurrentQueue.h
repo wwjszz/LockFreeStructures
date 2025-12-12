@@ -32,7 +32,7 @@ public:
 
     using AllocMode = typename BlockManagerType::AllocMode;
 
-    virtual constexpr ~QueueBase() = default;
+    virtual HAKLE_CPP20_CONSTEXPR ~QueueBase() = default;
 
     [[nodiscard]] constexpr std::size_t Size() const noexcept {
         std::size_t Tail = TailIndex.load( std::memory_order_relaxed );
@@ -87,7 +87,7 @@ public:
         CreateNewBlockIndexArray( 0 );
     }
 
-    constexpr ~FastQueue() override {
+    HAKLE_CPP20_CONSTEXPR ~FastQueue() override {
         if ( this->TailBlock != nullptr ) {
             // first, we find the first block that's half dequeued
             BlockType* HalfDequeuedBlock = nullptr;
@@ -142,7 +142,7 @@ public:
 
     // Enqueue, SPMC queue only supports one producer
     template <AllocMode Mode, class... Args>
-    constexpr bool Enqueue( Args&&... args ) {
+    HAKLE_CPP20_CONSTEXPR bool Enqueue( Args&&... args ) {
         std::size_t CurrentTailIndex = this->TailIndex.load( std::memory_order_relaxed );
         std::size_t NewTailIndex     = CurrentTailIndex + 1;
         std::size_t InnerIndex       = CurrentTailIndex & ( BlockSize - 1 );
@@ -221,7 +221,7 @@ public:
     }
 
     template <AllocMode Mode, class Iterator>
-    constexpr bool EnqueueBulk( Iterator ItemFirst, std::size_t Count ) {
+    HAKLE_CPP20_CONSTEXPR bool EnqueueBulk( Iterator ItemFirst, std::size_t Count ) {
         // set original state
         std::size_t OriginIndexEntriesUsed = PO_IndexEntriesUsed();
         std::size_t OriginNextIndexEntry   = PO_NextIndexEntry();
@@ -375,7 +375,9 @@ public:
 
     // Dequeue
     template <class U>
+#if HAKLE_CPP_VERSION >= 20
         requires std::is_assignable_v<U&, ValueType&&>
+#endif
     constexpr bool Dequeue( U& Element ) {
         std::size_t FailedCount = this->DequeueFailedCount.load( std::memory_order_relaxed );
         if ( HAKLE_LIKELY( CircularLessThan( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount,
@@ -530,7 +532,7 @@ private:
         IndexEntryArray*         Prev{ nullptr };
     };
 
-    constexpr bool CreateNewBlockIndexArray( std::size_t FilledSlot ) noexcept {
+    HAKLE_CPP20_CONSTEXPR bool CreateNewBlockIndexArray( std::size_t FilledSlot ) noexcept {
         std::size_t SizeMask = PO_IndexEntriesSize() - 1;
 
         PO_IndexEntriesSize() <<= 1;
