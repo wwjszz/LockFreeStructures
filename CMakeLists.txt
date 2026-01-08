@@ -98,6 +98,12 @@ target_link_libraries(fastqueuetest PRIVATE gtest_main)
 add_executable(fastqueuetest_exception tests/fastqueuetest_exception.cpp tests/Debug/ThrowOn.cpp)
 target_link_libraries(fastqueuetest_exception PRIVATE gtest_main)
 
+add_executable(slowqueuetest tests/slowqueuetest.cpp tests/Debug/ThrowOn.cpp)
+target_link_libraries(slowqueuetest PRIVATE gtest_main)
+
+add_executable(slowqueuetest_exception tests/slowqueuetest_exception.cpp tests/Debug/ThrowOn.cpp)
+target_link_libraries(slowqueuetest_exception PRIVATE gtest_main)
+
 add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
 add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)
 add_test(NAME hashtabletest COMMAND hashtabletest)
@@ -105,3 +111,5 @@ add_test(NAME freelisttest COMMAND freelisttest)
 add_test(NAME blockpooltest COMMAND blockpooltest)
 add_test(NAME fastqueuetest COMMAND fastqueuetest)
 add_test(NAME fastqueuetest_exception COMMAND fastqueuetest_exception)
+add_test(NAME slowqueuetest COMMAND slowqueuetest)
+add_test(NAME slowqueuetest_exception COMMAND slowqueuetest_exception)

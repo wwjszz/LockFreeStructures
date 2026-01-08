@@ -41,8 +41,13 @@
 
 #if HAKLE_CPP_VERSION >= 20
 #define HAKLE_CPP20_CONSTEXPR constexpr
+#define HAKLE_USE_CONCEPT
+#define HAKLE_CONCEPT( expr ) expr
+#define HAKLE_REQUIRES( ... ) requires __VA_ARGS__
 #else
 #define HAKLE_CPP20_CONSTEXPR
+#define HAKLE_CONCEPT( expr ) class
+#define HAKLE_REQUIRES
 #endif
 
 #if HAKLE_CPP_VERSION >= 14

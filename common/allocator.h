@@ -38,8 +38,30 @@ struct AllocatorTraitsRebind<Alloc<T, Args...>, U, false> {
     using Type = Alloc<U, Args...>;
 };
 
+#ifdef HAKLE_USE_CONCEPT
+template <class Tp>
+concept IsAllocator = requires( typename Tp::SizeType n, typename Tp::Pointer p, typename Tp::Pointer last) {
+    typename Tp::ValueType;
+    typename Tp::Pointer;
+    typename Tp::ConstPointer;
+    typename Tp::Reference;
+    typename Tp::ConstReference;
+    typename Tp::SizeType;
+    typename Tp::DifferenceType;
+
+    { Tp::Allocate() } -> std::same_as<typename Tp::Pointer>;
+    { Tp::Allocate( n ) } -> std::same_as<typename Tp::Pointer>;
+    Tp::Deallocate( p );
+    Tp::Deallocate( p, n );
+    Tp::Destroy( p );
+    Tp::Destroy( p, n );
+    Tp::Destroy( p, last );
+    // TODO: support Construct
+};
+#endif
+
 // TODO: propagate on container copy and ...
-template <class HakleAllocator>
+template <HAKLE_CONCEPT( IsAllocator ) HakleAllocator>
 struct HakeAllocatorTraits {
     using AllocatorType  = HakleAllocator;
     using ValueType      = typename AllocatorType::ValueType;

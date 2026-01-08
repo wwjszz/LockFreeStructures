@@ -4,6 +4,7 @@
 
 #ifndef BLOCKMANAGER_H
 #define BLOCKMANAGER_H
+#include "Block.h"
 #include "common/CompressPair.h"
 #include "common/allocator.h"
 
@@ -14,15 +15,45 @@
 // BlockPool + FreeList
 namespace hakle {
 
+#ifndef HAKLE_USE_CONCEPT
 template <class BLOCK_TYPE>
 struct BlockTraits {
-    static_assert( BLOCK_TYPE::BlockSize > 0 && ( BLOCK_TYPE::BlockSize & ( BLOCK_TYPE::BlockSize - 1 ) ) == 0,
-                   "BlockSize must be power of 2 and greater than 0" );
+    static_assert( BLOCK_TYPE::BlockSize > 1 && ( BLOCK_TYPE::BlockSize & ( BLOCK_TYPE::BlockSize - 1 ) ) == 0,
+                   "BlockSize must be power of 2 and greater than 1" );
 
     constexpr static std::size_t BlockSize = BLOCK_TYPE::BlockSize;
     using ValueType                        = typename BLOCK_TYPE::ValueType;
     using BlockType                        = BLOCK_TYPE;
 };
+#else
+
+template <class T, template <class> class Constraint>
+concept IsAtomicWith = requires {
+    typename T::value_type;
+    requires Constraint<typename T::value_type>::value;
+    requires std::same_as<std::remove_cvref_t<T>, std::atomic<typename T::value_type>>;
+};
+
+template <class T>
+struct IsInteger : std::bool_constant<std::integral<T>> {};
+
+template <class T>
+struct IsPointer : std::bool_constant<std::is_pointer<T>::value> {};
+
+template <class T>
+concept IsFreeListNode = requires( T& t ) {
+    requires IsAtomicWith<std::remove_reference_t<decltype( t.FreeListRefs )>, IsInteger>;
+    requires IsAtomicWith<std::remove_reference_t<decltype( t.FreeListNext )>, IsPointer>;
+};
+
+template <class T>
+concept IsBlockManager = requires( T& t, typename T::AllocMode Mode, typename T::BlockType* p ) {
+    { t.RequisitionBlock( Mode ) } -> std::same_as<typename T::BlockType*>;
+    t.ReturnBlock( p );
+    t.ReturnBlocks( p );
+};
+
+#endif
 
 struct MemoryBase {
     bool HasOwner{ false };
@@ -34,7 +65,7 @@ struct FreeListNode : MemoryBase {
     std::atomic<T*>       FreeListNext{ 0 };
 };
 
-template <class Node, class ALLOCATOR_TYPE = HakleAllocator<Node>>
+template <HAKLE_CONCEPT( IsFreeListNode ) Node, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<Node>>
 class FreeList {
 public:
     static_assert( std::is_base_of<FreeListNode<Node>, Node>::value, "Node must be derived from FreeListNode<Node>" );
@@ -129,7 +160,7 @@ private:
     CompressPair<std::atomic<Node*>, AllocatorType> AllocatorPair{};
 };
 
-template <class BLOCK_TYPE, class ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
+template <HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
 class BlockPool {
 public:
     using AllocatorType   = ALLOCATOR_TYPE;
@@ -176,15 +207,20 @@ private:
     BLOCK_TYPE*                              Head{ nullptr };
 };
 
-template <class BLOCK_TYPE, class ALLOCATOR_TYPE>
+template <HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE>
 class BlockManagerBase : private CompressPairElem<ALLOCATOR_TYPE, 0> {
 public:
-    using AllocatorType                    = ALLOCATOR_TYPE;
-    using BlockAllocatorTraits             = HakeAllocatorTraits<AllocatorType>;
-    using BlockType                        = BLOCK_TYPE;
+    using AllocatorType        = ALLOCATOR_TYPE;
+    using BlockAllocatorTraits = HakeAllocatorTraits<AllocatorType>;
+    using BlockType            = BLOCK_TYPE;
+#if HAKLE_CPP_VERSION >= 20
+    constexpr static std::size_t BlockSize = BlockType::BlockSize;
+    using ValueType                        = typename BlockType::ValueType;
+#else
     using BlockTraits                      = BlockTraits<BlockType>;
     constexpr static std::size_t BlockSize = BlockTraits::BlockSize;
     using ValueType                        = typename BlockTraits::ValueType;
+#endif
 
     constexpr BlockManagerBase() = default;
     constexpr explicit BlockManagerBase( AllocatorType& InAllocator ) : Base( InAllocator ) {}
@@ -204,7 +240,7 @@ private:
 };
 
 // We set a block pool and a free list
-template <class BLOCK_TYPE, class ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
+template <HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>>
 class HakleBlockManager : public BlockManagerBase<BLOCK_TYPE, ALLOCATOR_TYPE> {
 public:
     using BaseManager = BlockManagerBase<BLOCK_TYPE, ALLOCATOR_TYPE>;
@@ -213,7 +249,6 @@ public:
     using AllocatorType = typename BaseManager::AllocatorType;
 
     using typename BaseManager::BlockAllocatorTraits;
-    using typename BaseManager::BlockTraits;
     using typename BaseManager::BlockType;
     using typename BaseManager::ValueType;
 

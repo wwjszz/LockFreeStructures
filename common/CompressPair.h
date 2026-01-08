@@ -51,7 +51,9 @@ struct CompressPairElem<T, Index, true> : private T {
     ConstReference Get() const { return *this; }
 };
 
+// TODO: use [[no_unique_address] to replace
 template <class T1, class T2>
+HAKLE_REQUIRES( ( !std::same_as<T1, T2> ))
 class CompressPair : private CompressPairElem<T1, 0>, private CompressPairElem<T2, 1> {
     static_assert( !std::is_same<T1, T2>::value, "T1 and T2 are the same" );
 
@@ -64,14 +66,13 @@ public:
                                                   int> = 0>
     constexpr CompressPair() : Base1( ValueInitTag{} ), Base2( ValueInitTag{} ) {}
 
-    template<class U1, class U2>
+    template <class U1, class U2>
     constexpr CompressPair( U1&& X, U2&& Y ) : Base1( std::forward<U1>( X ) ), Base2( std::forward<U2>( Y ) ) {}
 
-    constexpr typename Base1::Reference First() { return Base1::Get(); }
+    constexpr typename Base1::Reference      First() { return Base1::Get(); }
     constexpr typename Base1::ConstReference First() const { return Base1::Get(); }
-    constexpr typename Base2::Reference Second() { return Base2::Get(); }
+    constexpr typename Base2::Reference      Second() { return Base2::Get(); }
     constexpr typename Base2::ConstReference Second() const { return Base2::Get(); }
-
 
     constexpr static Base1* GetFirstBase( CompressPair* Pair ) noexcept { return static_cast<Base1*>( Pair ); }
 
