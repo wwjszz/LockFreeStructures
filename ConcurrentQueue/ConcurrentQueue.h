@@ -915,19 +915,19 @@ public:
                     this->DequeueFailedCount.fetch_add( DesiredCount - ActualCount, std::memory_order_release );
                 }
 
-                std::size_t Index = this->HeadIndex.fetch_add( ActualCount, std::memory_order_relaxed );
+                std::size_t Index      = this->HeadIndex.fetch_add( ActualCount, std::memory_order_relaxed );
                 std::size_t InnerIndex = Index & ( BlockSize - 1 );
 
-                std::size_t StartIndex   = InnerIndex;
-                std::size_t NeedCount    = ActualCount;
+                std::size_t StartIndex = InnerIndex;
+                std::size_t NeedCount  = ActualCount;
 
                 IndexEntryArray* LocalIndexEntryArray;
-                std::size_t IndexEntryIndex = GetBlockIndexIndexForIndex( Index,  LocalIndexEntryArray);
+                std::size_t      IndexEntryIndex = GetBlockIndexIndexForIndex( Index, LocalIndexEntryArray );
                 while ( NeedCount != 0 ) {
-                    IndexEntry* DequeueIndexEntry = LocalIndexEntryArray->Index[IndexEntryIndex];
-                    BlockType* DequeueBlock = DequeueIndexEntry->Value.load( std::memory_order_relaxed );
-                    std::size_t EndIndex     = ( NeedCount > ( BlockSize - StartIndex ) ) ? BlockSize : ( NeedCount + StartIndex );
-                    std::size_t CurrentIndex = StartIndex;
+                    IndexEntry* DequeueIndexEntry = LocalIndexEntryArray->Index[ IndexEntryIndex ];
+                    BlockType*  DequeueBlock      = DequeueIndexEntry->Value.load( std::memory_order_relaxed );
+                    std::size_t EndIndex          = ( NeedCount > ( BlockSize - StartIndex ) ) ? BlockSize : ( NeedCount + StartIndex );
+                    std::size_t CurrentIndex      = StartIndex;
                     HAKLE_CONSTEXPR_IF( std::is_nothrow_assignable<typename std::iterator_traits<Iterator>::value_type, ValueType&&>::value ) {
                         while ( CurrentIndex != EndIndex ) {
                             ValueType& Value = *( *DequeueBlock )[ CurrentIndex ];
@@ -952,10 +952,10 @@ public:
                             // we need to destroy all the remaining values
                             goto Enter;
                             while ( NeedCount != 0 ) {
-                                DequeueIndexEntry = LocalIndexEntryArray->Index[IndexEntryIndex];
-                                DequeueBlock = DequeueIndexEntry->Value.load( std::memory_order_relaxed );
-                                EndIndex     = ( NeedCount > ( BlockSize - StartIndex ) ) ? BlockSize : ( NeedCount + StartIndex );
-                                CurrentIndex = StartIndex;
+                                DequeueIndexEntry = LocalIndexEntryArray->Index[ IndexEntryIndex ];
+                                DequeueBlock      = DequeueIndexEntry->Value.load( std::memory_order_relaxed );
+                                EndIndex          = ( NeedCount > ( BlockSize - StartIndex ) ) ? BlockSize : ( NeedCount + StartIndex );
+                                CurrentIndex      = StartIndex;
                             Enter:
                                 while ( CurrentIndex != EndIndex ) {
                                     ValueType& Value = *( *DequeueBlock )[ CurrentIndex ];
@@ -964,22 +964,22 @@ public:
                                     ++CurrentIndex;
                                 }
 
-                                if (DequeueBlock->SetSomeEmpty( StartIndex, EndIndex - StartIndex ) ) {
+                                if ( DequeueBlock->SetSomeEmpty( StartIndex, EndIndex - StartIndex ) ) {
                                     DequeueIndexEntry->Value.store( nullptr, std::memory_order_relaxed );
                                     BlockManager().ReturnBlock( DequeueBlock );
                                 }
-                                StartIndex   = 0;
-                                IndexEntryIndex = (IndexEntryIndex + 1 ) & (LocalIndexEntryArray->Size - 1);
+                                StartIndex      = 0;
+                                IndexEntryIndex = ( IndexEntryIndex + 1 ) & ( LocalIndexEntryArray->Size - 1 );
                             }
                             HAKLE_RETHROW;
                         }
                     }
-                    if (DequeueBlock->SetSomeEmpty( StartIndex, EndIndex - StartIndex ) ) {
+                    if ( DequeueBlock->SetSomeEmpty( StartIndex, EndIndex - StartIndex ) ) {
                         DequeueIndexEntry->Value.store( nullptr, std::memory_order_relaxed );
                         BlockManager().ReturnBlock( DequeueBlock );
                     }
-                    StartIndex   = 0;
-                    IndexEntryIndex = (IndexEntryIndex + 1 ) & (LocalIndexEntryArray->Size - 1);
+                    StartIndex      = 0;
+                    IndexEntryIndex = ( IndexEntryIndex + 1 ) & ( LocalIndexEntryArray->Size - 1 );
                 }
                 return ActualCount;
             }
@@ -1141,6 +1141,10 @@ private:
     constexpr const BlockManagerType&              BlockManager() const noexcept { return IndexEntryArrayAllocatorPair.First(); }
     HAKLE_NODISCARD constexpr const std::size_t&   IndexEntriesSize() const noexcept { return ValueAndIndexEntryPointerAllocatorPair.First(); }
 };
+
+struct ProducerToken {};
+
+struct ConsumerToken {};
 
 }  // namespace hakle
 

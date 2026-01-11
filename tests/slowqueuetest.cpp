@@ -59,7 +59,6 @@ TEST( ConcurrentQueueTest, Size ) {
     queue.Enqueue<AllocMode::CanAlloc>( 2 );
     EXPECT_EQ( queue.Enqueue<AllocMode::CanAlloc>( 3 ), true );
 
-
     EXPECT_EQ( queue.Size(), 3 );
 
     int v;
@@ -209,8 +208,6 @@ TEST( ConcurrentQueueTest, MultiConsumerStressTest ) {
     TestCounterQueue        queue( 100, blockManager );
     using AllocMode = TestCounterQueue::AllocMode;
 
-    std::cout << TestCounterQueue::BlockSize << std::endl;
-
     const unsigned long long        N             = 800000;  // 每个数从 0 到 N-1
     const int                       NUM_CONSUMERS = 30;      // 3 个消费者
     std::atomic<unsigned long long> total_sum{ 0 };          // 所有消费者结果累加
@@ -266,7 +263,6 @@ TEST( ConcurrentQueueTest, MultiConsumerStressTest ) {
     // 验证队列为空
     EXPECT_EQ( queue.Size(), 0 );
 }
-
 
 struct ExceptionTest {
     ExceptionTest( int v = 0 ) : value( v ) {
