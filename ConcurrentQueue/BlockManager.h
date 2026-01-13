@@ -7,7 +7,6 @@
 
 #include <atomic>
 #include <cstddef>
-#include <cstdint>
 
 #include "Block.h"
 #include "common/CompressPair.h"
@@ -77,8 +76,7 @@ public:
     using AllocatorType   = ALLOCATOR_TYPE;
     using AllocatorTraits = HakeAllocatorTraits<AllocatorType>;
 
-    constexpr FreeList() = default;
-    constexpr explicit FreeList( AllocatorType& InAllocator ) : AllocatorPair( nullptr, InAllocator ) {}
+    constexpr explicit FreeList( const AllocatorType& InAllocator = AllocatorType{} ) : AllocatorPair( nullptr, InAllocator ) {}
 
     HAKLE_CPP20_CONSTEXPR ~FreeList() {
         Node* CurrentNode = Head().load( std::memory_order_relaxed );
@@ -170,15 +168,7 @@ public:
     using AllocatorType   = ALLOCATOR_TYPE;
     using AllocatorTraits = HakeAllocatorTraits<AllocatorType>;
 
-    constexpr explicit BlockPool( std::size_t InSize ) : AllocatorPair{ InSize, ValueInitTag{} } {
-        Head = AllocatorTraits::Allocate( Allocator(), Size() );
-        for ( std::size_t i = 0; i < Size(); i++ ) {
-            AllocatorTraits::Construct( Allocator(), Head + i );
-            Head[ i ].HasOwner = true;
-        }
-    }
-
-    constexpr BlockPool( std::size_t InSize, AllocatorType& InAllocator ) : AllocatorPair{ InSize, InAllocator } {
+    constexpr explicit BlockPool( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} ) : AllocatorPair{ InSize, InAllocator } {
         Head = AllocatorTraits::Allocate( Allocator(), Size() );
         for ( std::size_t i = 0; i < Size(); i++ ) {
             AllocatorTraits::Construct( Allocator(), Head + i );
@@ -227,7 +217,7 @@ public:
 #endif
 
     constexpr BlockManagerBase() = default;
-    constexpr explicit BlockManagerBase( AllocatorType& InAllocator ) : Base( InAllocator ) {}
+    constexpr explicit BlockManagerBase( const AllocatorType& InAllocator = AllocatorType{} ) : Base( InAllocator ) {}
     virtual ~BlockManagerBase() = default;
 
     enum class AllocMode { CanAlloc, CannotAlloc };
@@ -258,8 +248,7 @@ public:
 
     using AllocMode = typename BaseManager::AllocMode;
 
-    constexpr explicit HakleBlockManager( std::size_t InSize ) : Pool( InSize ) {}
-    constexpr HakleBlockManager( std::size_t InSize, AllocatorType& InAllocator )
+    constexpr explicit HakleBlockManager( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} )
         : BaseManager( InAllocator ), Pool( InSize, InAllocator ), FreeList( InAllocator ) {}
     HAKLE_CPP20_CONSTEXPR ~HakleBlockManager() override = default;
 

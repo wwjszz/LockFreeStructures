@@ -7,6 +7,11 @@
 
 #include <cstddef>
 #include <type_traits>
+#if defined( ENABLE_MEMORY_LEAK_DETECTION )
+#include <atomic>
+#include <cstdio>
+#include <typeinfo>
+#endif
 
 #include "common/common.h"
 #include "memory.h"
@@ -40,7 +45,7 @@ struct AllocatorTraitsRebind<Alloc<T, Args...>, U, false> {
 
 #ifdef HAKLE_USE_CONCEPT
 template <class Tp>
-concept IsAllocator = requires( typename Tp::SizeType n, typename Tp::Pointer p, typename Tp::Pointer last) {
+concept IsAllocator = requires( Tp alloc, typename Tp::SizeType n, typename Tp::Pointer p, typename Tp::Pointer last ) {
     typename Tp::ValueType;
     typename Tp::Pointer;
     typename Tp::ConstPointer;
@@ -49,13 +54,13 @@ concept IsAllocator = requires( typename Tp::SizeType n, typename Tp::Pointer p,
     typename Tp::SizeType;
     typename Tp::DifferenceType;
 
-    { Tp::Allocate() } -> std::same_as<typename Tp::Pointer>;
-    { Tp::Allocate( n ) } -> std::same_as<typename Tp::Pointer>;
-    Tp::Deallocate( p );
-    Tp::Deallocate( p, n );
-    Tp::Destroy( p );
-    Tp::Destroy( p, n );
-    Tp::Destroy( p, last );
+    { alloc.Allocate() } -> std::same_as<typename Tp::Pointer>;
+    { alloc.Allocate( n ) } -> std::same_as<typename Tp::Pointer>;
+    alloc.Deallocate( p );
+    alloc.Deallocate( p, n );
+    alloc.Destroy( p );
+    alloc.Destroy( p, n );
+    alloc.Destroy( p, last );
     // TODO: support Construct
 };
 #endif
@@ -91,6 +96,71 @@ struct HakeAllocatorTraits {
     static void Destroy( AllocatorType& Allocator, Pointer first, Pointer last ) noexcept { Destroy( Allocator, first, last - first ); }
 };
 
+#if defined( ENABLE_MEMORY_LEAK_DETECTION )
+
+template <class Tp>
+class HakleAllocator {
+public:
+    using ValueType      = Tp;
+    using Pointer        = Tp*;
+    using ConstPointer   = const Tp*;
+    using Reference      = Tp&;
+    using ConstReference = const Tp&;
+    using SizeType       = size_t;
+    using DifferenceType = std::ptrdiff_t;
+
+    ~HakleAllocator() {
+        printf( "Allocator %s Quit when AllocateCount = %d, ConstructCount = %d\n", typeid( Tp ).name(), AllocateCount.load(), ConstructCount.load() );
+    }
+
+    static std::atomic<int> AllocateCount;
+    static std::atomic<int> ConstructCount;
+
+    constexpr Pointer Allocate() {
+        ++AllocateCount;
+        return HAKLE_OPERATOR_NEW( Tp );
+    }
+    constexpr Pointer Allocate( SizeType n ) {
+        AllocateCount += n;
+        return HAKLE_OPERATOR_NEW_ARRAY( Tp, n );
+    }
+
+    constexpr void Deallocate( Pointer ptr ) noexcept {
+        HAKLE_OPERATOR_DELETE( ptr );
+        --AllocateCount;
+    }
+    constexpr void Deallocate( Pointer ptr, HAKLE_MAYBE_UNUSED SizeType n ) noexcept {
+        Deallocate( ptr );
+        AllocateCount -= n - 1;
+    }
+
+    template <class... Args>
+    constexpr void Construct( Pointer ptr, Args&&... args ) {
+        HAKLE_CONSTRUCT( ptr, std::forward<Args>( args )... );
+        ++ConstructCount;
+    }
+
+    constexpr void Destroy( Pointer ptr ) noexcept {
+        HAKLE_DESTROY( ptr );
+        --ConstructCount;
+    }
+    constexpr void Destroy( Pointer ptr, SizeType n ) noexcept {
+        HAKLE_DESTROY_ARRAY( ptr, n );
+        ConstructCount -= n;
+    }
+    constexpr void Destroy( Pointer first, Pointer last ) noexcept {
+        Destroy( first, last - first );
+    }
+};
+
+template <class Tp>
+std::atomic<int> HakleAllocator<Tp>::AllocateCount{};
+
+template <class Tp>
+std::atomic<int> HakleAllocator<Tp>::ConstructCount{};
+
+#else
+
 template <class Tp>
 class HakleAllocator {
 public:
@@ -117,6 +187,7 @@ public:
     static constexpr void Destroy( Pointer ptr, SizeType n ) noexcept { HAKLE_DESTROY_ARRAY( ptr, n ); }
     static constexpr void Destroy( Pointer first, Pointer last ) noexcept { Destroy( first, last - first ); }
 };
+#endif
 
 }  // namespace hakle
 

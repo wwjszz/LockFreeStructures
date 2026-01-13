@@ -55,6 +55,7 @@ using HakleFlagsBlock = HakleBlock<T, BLOCK_SIZE, FlagsCheckPolicy<BLOCK_SIZE>>;
 template <class T, std::size_t BLOCK_SIZE>
 using HakleCounterBlock = HakleBlock<T, BLOCK_SIZE, CounterCheckPolicy<BLOCK_SIZE>>;
 
+// TODO: memory_order!!!
 template <std::size_t BLOCK_SIZE>
 struct FlagsCheckPolicy {
     constexpr static bool HasMeaningfulSetResult = false;
@@ -88,15 +89,24 @@ struct FlagsCheckPolicy {
 
     HAKLE_CPP20_CONSTEXPR void SetAllEmpty() {
         for ( std::size_t i = 0; i < BLOCK_SIZE; ++i ) {
-            Flags[ i ].store( 1, std::memory_order_relaxed );
+            Flags[ i ].store( 1, std::memory_order_release );
         }
     }
 
     HAKLE_CPP20_CONSTEXPR void Reset() {
         for ( auto& Flag : Flags ) {
-            Flag.store( 0, std::memory_order_relaxed );
+            Flag.store( 0, std::memory_order_release );
         }
     }
+
+#if defined( ENABLE_MEMORY_LEAK_DETECTION )
+    void PrintPolicy() {
+        printf( "===PrintPolicy BLOCK_SIZE: %llu===\n", BLOCK_SIZE );
+        for ( int i = 0; i < BLOCK_SIZE; ++i ) {
+            printf( "Flag[%d]=%hhu\n", i, Flags[ i ].load() );
+        }
+    }
+#endif
 
     std::array<std::atomic<uint8_t>, BLOCK_SIZE> Flags;
 };
@@ -126,10 +136,16 @@ struct CounterCheckPolicy {
         return OldCounter + Count == BLOCK_SIZE;
     }
 
-    HAKLE_CPP20_CONSTEXPR void SetAllEmpty() { Counter.store( BLOCK_SIZE, std::memory_order_relaxed ); }
+    HAKLE_CPP20_CONSTEXPR void SetAllEmpty() { Counter.store( BLOCK_SIZE, std::memory_order_release ); }
 
-    HAKLE_CPP20_CONSTEXPR void Reset() { Counter.store( 0, std::memory_order_relaxed ); }
+    HAKLE_CPP20_CONSTEXPR void Reset() { Counter.store( 0, std::memory_order_release ); }
 
+#if defined( ENABLE_MEMORY_LEAK_DETECTION )
+    void PrintPolicy() {
+        printf( "===PrintPolicy BLOCK_SIZE: %llu===\n", BLOCK_SIZE );
+        printf( "Counter: %llu\n", Counter.load() );
+    }
+#endif
     std::atomic<std::size_t> Counter;
 };
 

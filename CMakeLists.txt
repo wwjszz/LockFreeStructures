@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED OFF)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
+#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -Wall -O0 -ggdb")
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
@@ -89,8 +91,8 @@ target_link_libraries(hashtabletest PRIVATE gtest_main)
 add_executable(freelisttest tests/freelisttest.cpp)
 target_link_libraries(freelisttest PRIVATE gtest_main)
 
-add_executable(blockpooltest tests/blockpooltest.cpp)
-target_link_libraries(blockpooltest PRIVATE gtest_main)
+ add_executable(blockpooltest tests/blockpooltest.cpp)
+ target_link_libraries(blockpooltest PRIVATE gtest_main)
 
 add_executable(fastqueuetest tests/fastqueuetest.cpp tests/Debug/ThrowOn.cpp)
 target_link_libraries(fastqueuetest PRIVATE gtest_main)
@@ -104,6 +106,16 @@ target_link_libraries(slowqueuetest PRIVATE gtest_main)
 add_executable(slowqueuetest_exception tests/slowqueuetest_exception.cpp tests/Debug/ThrowOn.cpp)
 target_link_libraries(slowqueuetest_exception PRIVATE gtest_main)
 
+add_executable(fastqueuetest_leaks tests/fastqueuetest_leaks.cpp)
+target_link_libraries(fastqueuetest_leaks PRIVATE gtest_main)
+
+add_executable(slowqueuetest_leaks tests/slowqueuetest_leaks.cpp)
+target_link_libraries(slowqueuetest_leaks PRIVATE gtest_main)
+
+target_compile_definitions(fastqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
+target_compile_definitions(slowqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
+
+
 add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
 add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)
 add_test(NAME hashtabletest COMMAND hashtabletest)
@@ -113,3 +125,5 @@ add_test(NAME fastqueuetest COMMAND fastqueuetest)
 add_test(NAME fastqueuetest_exception COMMAND fastqueuetest_exception)
 add_test(NAME slowqueuetest COMMAND slowqueuetest)
 add_test(NAME slowqueuetest_exception COMMAND slowqueuetest_exception)
+add_test(NAME slowqueuetest_leaks COMMAND slowqueuetest_leaks)
+add_test(NAME fastqueuetest_leaks COMMAND fastqueuetest_leaks)

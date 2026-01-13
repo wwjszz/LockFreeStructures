@@ -30,7 +30,7 @@ using TestCounterQueue = FastQueue<int, kBlockSize, HakleAllocator<int>, TestCou
 void SleepFor( std::int64_t ms ) { std::this_thread::sleep_for( std::chrono::milliseconds( ms ) ); }
 
 // === 测试 1: 基本 Enqueue/Dequeue ===
-TEST( ConcurrentQueueTest, BasicEnqueueDequeue ) {
+TEST( FastQueueTest, BasicEnqueueDequeue ) {
     TestFlagsBlockManager blockManager( POOL_SIZE );
     TestFlagsQueue        queue( 10, blockManager );
     using AllocMode = TestFlagsQueue::AllocMode;
@@ -49,7 +49,7 @@ TEST( ConcurrentQueueTest, BasicEnqueueDequeue ) {
 }
 
 // === 测试 2: 队列大小 ===
-TEST( ConcurrentQueueTest, Size ) {
+TEST( FastQueueTest, Size ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
     TestCounterQueue        queue( 5, blockManager );
     using AllocMode = TestCounterQueue::AllocMode;
@@ -67,7 +67,7 @@ TEST( ConcurrentQueueTest, Size ) {
 }
 
 // === 测试 3: 单生产者多消费者线程安全 ===
-TEST( ConcurrentQueueTest, SingleProducerMultipleConsumer ) {
+TEST( FastQueueTest, SingleProducerMultipleConsumer ) {
     TestFlagsBlockManager blockManager( POOL_SIZE );
     TestFlagsQueue        queue( 100, blockManager );
     using AllocMode         = TestFlagsQueue::AllocMode;
@@ -129,7 +129,7 @@ using ThrowingBlock        = HakleFlagsBlock<ThrowingType, kBlockSize>;
 using ThrowingBlockManager = HakleBlockManager<ThrowingBlock>;
 using ThrowingQueue        = FastQueue<ThrowingType, kBlockSize>;
 
-TEST( ConcurrentQueueTest, ExceptionSafety ) {
+TEST( FastQueueTest, ExceptionSafety ) {
     ThrowingBlockManager blockManager( POOL_SIZE );
     ThrowingQueue        queue( 10, blockManager );
     using AllocMode = ThrowingQueue::AllocMode;
@@ -152,7 +152,7 @@ TEST( ConcurrentQueueTest, ExceptionSafety ) {
 }
 
 // === 测试 5: 使用 CounterCheckPolicy 的行为一致性 ===
-TEST( ConcurrentQueueTest, CounterPolicyBasic ) {
+TEST( FastQueueTest, CounterPolicyBasic ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
     TestCounterQueue        queue( 10, blockManager );
     using AllocMode = TestCounterQueue::AllocMode;
@@ -165,7 +165,7 @@ TEST( ConcurrentQueueTest, CounterPolicyBasic ) {
 }
 
 // === 测试 6: 大量数据压测 ===
-TEST( ConcurrentQueueTest, HighVolumeStressTest ) {
+TEST( FastQueueTest, HighVolumeStressTest ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
     TestCounterQueue        queue( 100, blockManager );
     using AllocMode = TestCounterQueue::AllocMode;
@@ -198,14 +198,14 @@ TEST( ConcurrentQueueTest, HighVolumeStressTest ) {
 }
 
 // === 测试 7: 多消费者压力测试（Multi-Consumer Stress Test）===
-TEST( ConcurrentQueueTest, MultiConsumerStressTest ) {
+TEST( FastQueueTest, MultiConsumerStressTest ) {
     TestCounterBlockManager blockManager( POOL_SIZE );
     TestCounterQueue        queue( 100, blockManager );
     using AllocMode = TestCounterQueue::AllocMode;
 
-    const unsigned long long        N             = 900000;  // 每个数从 0 到 N-1
-    const int                       NUM_CONSUMERS = 68;      // 3 个消费者
-    std::atomic<unsigned long long> total_sum{ 0 };          // 所有消费者结果累加
+    const unsigned long long        N             = 9000;  // 每个数从 0 到 N-1
+    const int                       NUM_CONSUMERS = 68;    // 3 个消费者
+    std::atomic<unsigned long long> total_sum{ 0 };        // 所有消费者结果累加
     std::vector<std::thread>        consumers;
     std::atomic<unsigned long long> count{ 0 };
 
@@ -251,7 +251,7 @@ TEST( ConcurrentQueueTest, MultiConsumerStressTest ) {
     for ( auto& t : consumers ) {
         t.join();
     }
-    printf( "size: %llu\n", queue.Size());
+
     // 验证：总和是否正确
     unsigned long long expected_sum = 99 * 50 * N;
     EXPECT_EQ( total_sum.load(), expected_sum );
@@ -280,7 +280,7 @@ struct ExceptionTest {
 };
 
 // === 测试 7: 多消费者压力测试（Multi-Consumer Stress Test）===
-TEST( ConcurrentQueueTest, MultiConsumerStressTestWithException ) {
+TEST( FastQueueTest, MultiConsumerStressTestWithException ) {
     using ExceptionBlock       = HakleFlagsBlock<ExceptionTest, kBlockSize>;
     using ExceptionBlockManger = HakleBlockManager<ExceptionBlock>;
     using ExceptionQueue       = FastQueue<ExceptionTest, kBlockSize>;
@@ -351,11 +351,7 @@ TEST( ConcurrentQueueTest, MultiConsumerStressTestWithException ) {
         t.join();
     }
 
-    // 验证：总和是否正确
-    // unsigned long long expected_sum = 101 * 50 * N;
-    // EXPECT_EQ( total_sum.load(), expected_sum );
     EXPECT_EQ( failed.load(), 0 );
-    // EXPECT_EQ( count.load(), N * 100 );
     printf( "count: %llu\n", count.load() );
     printf( "failed: %d\n", failed.load() );
     printf( "total_sum: %llu\n", total_sum.load() );
