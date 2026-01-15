@@ -8,6 +8,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "common.h"
+
 namespace hakle {
 
 struct DefaultInitTag {};
@@ -62,9 +64,7 @@ public:
     using Base1 = CompressPairElem<T1, 0>;
     using Base2 = CompressPairElem<T2, 1>;
 
-    template <bool Dummy = true, std::enable_if_t<DependentType<std::is_default_constructible<T1>, Dummy>::value
-                                                      && DependentType<std::is_default_constructible<T2>, Dummy>::value,
-                                                  int> = 0>
+    template <bool Dummy = true, std::enable_if_t<DependentType<std::is_default_constructible<T1>, Dummy>::value && DependentType<std::is_default_constructible<T2>, Dummy>::value, int> = 0>
     constexpr CompressPair() : Base1( ValueInitTag{} ), Base2( ValueInitTag{} ) {}
 
     template <class U1, class U2>

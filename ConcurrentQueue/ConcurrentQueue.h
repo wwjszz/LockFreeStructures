@@ -32,8 +32,7 @@ public:
 
     using AllocMode = typename BlockManagerType::AllocMode;
 
-    constexpr explicit QueueBase( const ValueAllocatorType& InAllocator = ValueAllocatorType{} ) noexcept
-        : ValueAllocatorPair( nullptr, InAllocator ) {}
+    constexpr explicit QueueBase( const ValueAllocatorType& InAllocator = ValueAllocatorType{} ) noexcept : ValueAllocatorPair( nullptr, InAllocator ) {}
     virtual HAKLE_CPP20_CONSTEXPR ~QueueBase() = default;
 
     HAKLE_NODISCARD constexpr std::size_t Size() const noexcept {
@@ -84,8 +83,7 @@ private:
     using IndexEntryArrayAllocatorTraits = typename ValueAllocatorTraits::template RebindTraits<IndexEntryArray>;
 
 public:
-    constexpr explicit FastQueue( std::size_t InSize, BlockManagerType& InBlockManager,
-                                  const ValueAllocatorType& InAllocator = ValueAllocatorType{} ) noexcept
+    constexpr explicit FastQueue( std::size_t InSize, BlockManagerType& InBlockManager, const ValueAllocatorType& InAllocator = ValueAllocatorType{} ) noexcept
         : Base( InAllocator ), BlockManager( InBlockManager ) {
         std::size_t InitialSize = CeilToPow2( InSize ) >> 1;
         if ( InitialSize < 2 ) {
@@ -206,10 +204,7 @@ public:
 
             HAKLE_CONSTEXPR_IF( !std::is_nothrow_constructible<ValueType, Args&&...>::value ) {
                 // we need to handle exception here
-                HAKLE_TRY {
-                    ValueAllocatorTraits::Construct( this->ValueAllocator(), ( *( this->TailBlock() ) )[ InnerIndex ],
-                                                     std::forward<Args>( args )... );
-                }
+                HAKLE_TRY { ValueAllocatorTraits::Construct( this->ValueAllocator(), ( *( this->TailBlock() ) )[ InnerIndex ], std::forward<Args>( args )... ); }
                 HAKLE_CATCH( ... ) {
                     // when OldTailBlock is nullptr, we should not go back to prevent block leak
                     // rollback
@@ -252,8 +247,7 @@ public:
         //     ( ( ( Count + LastTailIndex ) & ~( BlockSize - 1 ) ) - ( ( LastTailIndex & ~( BlockSize - 1 ) ) ) ) >> BlockSizeLog2;
 
         // StartTailIndex - 1 must be signed before shifting
-        std::size_t BlockCountNeed = ( ( Count + StartTailIndex - 1 ) >> BlockSizeLog2 )
-                                     - ( static_cast<std::make_signed_t<std::size_t>>( StartTailIndex - 1 ) >> BlockSizeLog2 );
+        std::size_t BlockCountNeed   = ( ( Count + StartTailIndex - 1 ) >> BlockSizeLog2 ) - ( static_cast<std::make_signed_t<std::size_t>>( StartTailIndex - 1 ) >> BlockSizeLog2 );
         std::size_t CurrentTailIndex = LastTailIndex & ~( BlockSize - 1 );
 
         if ( BlockCountNeed > 0 ) {
@@ -327,8 +321,7 @@ public:
         std::size_t StartInnerIndex = StartTailIndex & ( BlockSize - 1 );
         BlockType*  CurrentBlock    = ( StartInnerIndex == 0 && FirstAllocatedBlock != nullptr ) ? FirstAllocatedBlock : StartBlock;
         while ( true ) {
-            std::size_t EndInnerIndex =
-                ( CurrentBlock == this->TailBlock() ) ? ( StartTailIndex + Count - 1 ) & ( BlockSize - 1 ) : ( BlockSize - 1 );
+            std::size_t EndInnerIndex = ( CurrentBlock == this->TailBlock() ) ? ( StartTailIndex + Count - 1 ) & ( BlockSize - 1 ) : ( BlockSize - 1 );
             HAKLE_CONSTEXPR_IF( std::is_nothrow_constructible<ValueType, typename std::iterator_traits<Iterator>::value_type>::value ) {
                 while ( StartInnerIndex <= EndInnerIndex ) {
                     ValueAllocatorTraits::Construct( this->ValueAllocator(), ( *CurrentBlock )[ StartInnerIndex ], *ItemFirst++ );
@@ -391,8 +384,7 @@ public:
         }
 
         if ( FirstAllocatedBlock != nullptr ) {
-            this->CurrentIndexEntryArray.load( std::memory_order_relaxed )
-                ->Tail.store( ( PO_NextIndexEntry - 1 ) & ( PO_IndexEntriesSize() - 1 ), std::memory_order_release );
+            this->CurrentIndexEntryArray.load( std::memory_order_relaxed )->Tail.store( ( PO_NextIndexEntry - 1 ) & ( PO_IndexEntriesSize() - 1 ), std::memory_order_release );
         }
         this->TailIndex.store( StartTailIndex + Count, std::memory_order_release );
         return true;
@@ -404,8 +396,7 @@ public:
     template <class U>
     constexpr bool Dequeue( U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), ValueType&&> ) {
         std::size_t FailedCount = this->DequeueFailedCount.load( std::memory_order_relaxed );
-        if ( HAKLE_LIKELY( CircularLessThan( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount,
-                                             this->TailIndex.load( std::memory_order_relaxed ) ) ) ) {
+        if ( HAKLE_LIKELY( CircularLessThan( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount, this->TailIndex.load( std::memory_order_relaxed ) ) ) ) {
             // TODO: understand this
             std::atomic_thread_fence( std::memory_order_acquire );
 
@@ -413,7 +404,7 @@ public:
             if ( HAKLE_LIKELY( CircularLessThan( AttemptsCount - FailedCount, this->TailIndex.load( std::memory_order_acquire ) ) ) ) {
                 // NOTE: getting headIndex must be front of getting CurrentIndexEntryArray
                 // if get CurrentIndexEntryArray first, there is a situation that makes FirstBlockIndexBase larger than IndexEntryTailBase
-                std::size_t Index      = this->HeadIndex.fetch_add( 1, std::memory_order_acq_rel );
+                std::size_t Index      = this->HeadIndex.fetch_add( 1, std::memory_order_relaxed );
                 std::size_t InnerIndex = Index & ( BlockSize - 1 );
 
                 // we can dequeue
@@ -423,10 +414,8 @@ public:
                 std::size_t IndexEntryTailBase  = LocalIndexEntryArray->Entries[ LocalIndexEntryIndex ].Base;
                 std::size_t FirstBlockIndexBase = Index & ~( BlockSize - 1 );
                 std::size_t Offset              = ( FirstBlockIndexBase - IndexEntryTailBase ) >> BlockSizeLog2;
-                BlockType*  DequeueBlock =
-                    LocalIndexEntryArray->Entries[ ( LocalIndexEntryIndex + Offset ) & ( LocalIndexEntryArray->Size - 1 ) ].InnerBlock;
-
-                ValueType& Value = *( *DequeueBlock )[ InnerIndex ];
+                BlockType*  DequeueBlock        = LocalIndexEntryArray->Entries[ ( LocalIndexEntryIndex + Offset ) & ( LocalIndexEntryArray->Size - 1 ) ].InnerBlock;
+                ValueType&  Value               = *( *DequeueBlock )[ InnerIndex ];
 
                 HAKLE_CONSTEXPR_IF( !std::is_nothrow_assignable<U&, ValueType>::value ) {
                     struct Guard {
@@ -456,9 +445,8 @@ public:
 
     template <HAKLE_CONCEPT( std::output_iterator<ValueType&&> ) Iterator>
     std::size_t DequeueBulk( Iterator ItemFirst, std::size_t MaxCount ) {
-        std::size_t FailedCount = this->DequeueFailedCount.load( std::memory_order_relaxed );
-        std::size_t DesiredCount =
-            this->TailIndex.load( std::memory_order_relaxed ) - ( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount );
+        std::size_t FailedCount  = this->DequeueFailedCount.load( std::memory_order_relaxed );
+        std::size_t DesiredCount = this->TailIndex.load( std::memory_order_relaxed ) - ( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount );
         if ( HAKLE_LIKELY( CircularLessThan<std::size_t>( 0, DesiredCount ) ) ) {
             DesiredCount = std::min( DesiredCount, MaxCount );
             // TODO: understand this
@@ -481,8 +469,7 @@ public:
                 std::size_t IndexEntryTailBase  = LocalIndexEntriesArray->Entries[ LocalIndexEntryIndex ].Base;
                 std::size_t FirstBlockIndexBase = FirstIndex & ~( BlockSize - 1 );
                 std::size_t Offset              = ( FirstBlockIndexBase - IndexEntryTailBase ) >> BlockSizeLog2;
-                BlockType*  FirstDequeueBlock =
-                    LocalIndexEntriesArray->Entries[ ( LocalIndexEntryIndex + Offset ) & ( LocalIndexEntriesArray->Size - 1 ) ].InnerBlock;
+                BlockType*  FirstDequeueBlock   = LocalIndexEntriesArray->Entries[ ( LocalIndexEntryIndex + Offset ) & ( LocalIndexEntriesArray->Size - 1 ) ].InnerBlock;
 
                 BlockType*  DequeueBlock = FirstDequeueBlock;
                 std::size_t StartIndex   = InnerIndex;
@@ -627,9 +614,8 @@ private:
     IndexEntry* PO_PrevEntries{ nullptr };
 };
 
-template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>,
-          HAKLE_CONCEPT( IsBlockWithMeaningfulSetResult ) BLOCK_TYPE = HakleCounterBlock<T, BLOCK_SIZE>,
-          HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE         = HakleBlockManager<BLOCK_TYPE>>
+template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsBlockWithMeaningfulSetResult ) BLOCK_TYPE = HakleCounterBlock<T, BLOCK_SIZE>,
+          HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>>
 class SlowQueue : public QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE> {
 public:
     using Base = QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>;
@@ -697,8 +683,7 @@ public:
                 IndexEntryArray* Prev = CurrentArray->Prev;
                 // pass size to detect memory leaks
                 IndexEntryPointerAllocatorTraits::Deallocate( IndexEntryPointerAllocator(), CurrentArray->Index, CurrentArray->Size );
-                IndexEntryAllocatorTraits::Deallocate( IndexEntryAllocator(), CurrentArray->Entries,
-                                                       Prev == nullptr ? CurrentArray->Size : ( CurrentArray->Size >> 1 ) );
+                IndexEntryAllocatorTraits::Deallocate( IndexEntryAllocator(), CurrentArray->Entries, Prev == nullptr ? CurrentArray->Size : ( CurrentArray->Size >> 1 ) );
                 IndexEntryArrayAllocatorTraits::Destroy( IndexEntryArrayAllocator(), CurrentArray );
                 IndexEntryArrayAllocatorTraits::Deallocate( IndexEntryArrayAllocator(), CurrentArray );
                 CurrentArray = Prev;
@@ -777,8 +762,7 @@ public:
             this->TailBlock() = OriginTailBlock;
         };
 
-        std::size_t NeedCount = ( ( OriginTailIndex + Count - 1 ) >> BlockSizeLog2 )
-                                - ( static_cast<std::make_signed_t<std::size_t>>( OriginTailIndex - 1 ) >> BlockSizeLog2 );
+        std::size_t NeedCount        = ( ( OriginTailIndex + Count - 1 ) >> BlockSizeLog2 ) - ( static_cast<std::make_signed_t<std::size_t>>( OriginTailIndex - 1 ) >> BlockSizeLog2 );
         std::size_t CurrentTailIndex = ( OriginTailIndex - 1 ) & ~( BlockSize - 1 );
         // allocate index entry and block
         while ( NeedCount > 0 ) {
@@ -791,8 +775,7 @@ public:
 
             // TODO: add MAX_SIZE check
             bool full = !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize );
-            if ( full || !( IndexInserted = InsertBlockIndexEntry<Mode>( IndexEntry, CurrentTailIndex ) )
-                 || !( NewBlock = BlockManager().RequisitionBlock( Mode ) ) ) {
+            if ( full || !( IndexInserted = InsertBlockIndexEntry<Mode>( IndexEntry, CurrentTailIndex ) ) || !( NewBlock = BlockManager().RequisitionBlock( Mode ) ) ) {
                 if ( IndexInserted ) {
                     RewindBlockIndexTail();
                     IndexEntry->Value.store( nullptr, std::memory_order_relaxed );
@@ -820,8 +803,7 @@ public:
         BlockType*  StartBlock      = ( StartInnerIndex == 0 && FirstAllocatedBlock != nullptr ) ? FirstAllocatedBlock : OriginTailBlock;
         BlockType*  CurrentBlock    = StartBlock;
         while ( true ) {
-            std::size_t EndInnerIndex =
-                ( CurrentBlock == this->TailBlock() ) ? ( OriginTailIndex + Count - 1 ) & ( BlockSize - 1 ) : ( BlockSize - 1 );
+            std::size_t EndInnerIndex = ( CurrentBlock == this->TailBlock() ) ? ( OriginTailIndex + Count - 1 ) & ( BlockSize - 1 ) : ( BlockSize - 1 );
             HAKLE_CONSTEXPR_IF( std::is_nothrow_constructible<ValueType, typename std::iterator_traits<Iterator>::value_type>::value ) {
                 while ( StartInnerIndex <= EndInnerIndex ) {
                     ValueAllocatorTraits::Construct( this->ValueAllocator(), ( *CurrentBlock )[ StartInnerIndex ], *ItemFirst++ );
@@ -877,8 +859,7 @@ public:
     template <class U>
     constexpr bool Dequeue( U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), ValueType&&> ) {
         std::size_t FailedCount = this->DequeueFailedCount.load( std::memory_order_relaxed );
-        if ( HAKLE_LIKELY( CircularLessThan( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount,
-                                             this->TailIndex.load( std::memory_order_relaxed ) ) ) ) {
+        if ( HAKLE_LIKELY( CircularLessThan( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount, this->TailIndex.load( std::memory_order_relaxed ) ) ) ) {
             // TODO: understand this
             std::atomic_thread_fence( std::memory_order_acquire );
 
@@ -905,9 +886,7 @@ public:
                                 BlockManager.ReturnBlock( Block );
                             }
                         }
-                    } guard{
-                        .Entry = Entry, .Block = Block, .BlockManager = BlockManager(), .ValueAllocatorPair = { InnerIndex, this->ValueAllocator() }
-                    };
+                    } guard{ .Entry = Entry, .Block = Block, .BlockManager = BlockManager(), .ValueAllocatorPair = { InnerIndex, this->ValueAllocator() } };
 
                     Element = std::move( Value );
                 }
@@ -929,9 +908,8 @@ public:
 
     template <HAKLE_CONCEPT( std::output_iterator<ValueType&&> ) Iterator>
     std::size_t DequeueBulk( Iterator ItemFirst, std::size_t MaxCount ) {
-        std::size_t FailedCount = this->DequeueFailedCount.load( std::memory_order_relaxed );
-        std::size_t DesiredCount =
-            this->TailIndex.load( std::memory_order_relaxed ) - ( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount );
+        std::size_t FailedCount  = this->DequeueFailedCount.load( std::memory_order_relaxed );
+        std::size_t DesiredCount = this->TailIndex.load( std::memory_order_relaxed ) - ( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount );
         if ( HAKLE_LIKELY( CircularLessThan<std::size_t>( 0, DesiredCount ) ) ) {
             DesiredCount = std::min( DesiredCount, MaxCount );
             // TODO: understand this
@@ -1064,8 +1042,7 @@ private:
 
     HAKLE_CPP20_CONSTEXPR void RewindBlockIndexTail() noexcept {
         IndexEntryArray* LocalBlockEntryArray = CurrentIndexEntryArray().load( std::memory_order_relaxed );
-        LocalBlockEntryArray->Tail.store( ( LocalBlockEntryArray->Tail.load( std::memory_order_relaxed ) - 1 ) & ( LocalBlockEntryArray->Size - 1 ),
-                                          std::memory_order_relaxed );
+        LocalBlockEntryArray->Tail.store( ( LocalBlockEntryArray->Tail.load( std::memory_order_relaxed ) - 1 ) & ( LocalBlockEntryArray->Size - 1 ), std::memory_order_relaxed );
     }
 
     HAKLE_CPP20_CONSTEXPR IndexEntry* GetBlockIndexEntryForIndex( std::size_t Index ) const noexcept {

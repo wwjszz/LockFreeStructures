@@ -11,7 +11,6 @@
 #include <cstdio>
 #endif
 
-
 #include "common/common.h"
 
 namespace hakle {

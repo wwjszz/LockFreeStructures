@@ -258,8 +258,7 @@ private:
                         while ( true ) {
                             Index &= MainCapacity - 1;
                             auto Empty = INVALID_KEY;
-                            if ( CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong( Empty, Key, std::memory_order_acquire,
-                                                                                                std::memory_order_relaxed ) ) {
+                            if ( CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong( Empty, Key, std::memory_order_acquire, std::memory_order_relaxed ) ) {
                                 CurrentMainHash->Entries[ Index ].Value.store( CurrentValue, std::memory_order_release );
                                 break;
                             }
@@ -314,8 +313,7 @@ private:
                     TKey CurrentKey = CurrentMainHash->Entries[ Index ].Key.load( std::memory_order_relaxed );
                     if ( CurrentKey == INVALID_KEY ) {
                         TKey Empty = INVALID_KEY;
-                        if ( CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong( Empty, Key, std::memory_order_acq_rel,
-                                                                                            std::memory_order_relaxed ) ) {
+                        if ( CurrentMainHash->Entries[ Index ].Key.compare_exchange_strong( Empty, Key, std::memory_order_acq_rel, std::memory_order_relaxed ) ) {
                             CurrentMainHash->Entries[ Index ].Value.store( InValue, std::memory_order_release );
                             break;
                         }

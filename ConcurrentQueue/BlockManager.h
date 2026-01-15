@@ -18,8 +18,7 @@ namespace hakle {
 #ifndef HAKLE_USE_CONCEPT
 template <class BLOCK_TYPE>
 struct BlockTraits {
-    static_assert( BLOCK_TYPE::BlockSize > 1 && ( BLOCK_TYPE::BlockSize & ( BLOCK_TYPE::BlockSize - 1 ) ) == 0,
-                   "BlockSize must be power of 2 and greater than 1" );
+    static_assert( BLOCK_TYPE::BlockSize > 1 && ( BLOCK_TYPE::BlockSize & ( BLOCK_TYPE::BlockSize - 1 ) ) == 0, "BlockSize must be power of 2 and greater than 1" );
 
     constexpr static std::size_t BlockSize = BLOCK_TYPE::BlockSize;
     using ValueType                        = typename BLOCK_TYPE::ValueType;
@@ -248,8 +247,7 @@ public:
 
     using AllocMode = typename BaseManager::AllocMode;
 
-    constexpr explicit HakleBlockManager( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} )
-        : BaseManager( InAllocator ), Pool( InSize, InAllocator ), FreeList( InAllocator ) {}
+    constexpr explicit HakleBlockManager( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} ) : BaseManager( InAllocator ), Pool( InSize, InAllocator ), FreeList( InAllocator ) {}
     HAKLE_CPP20_CONSTEXPR ~HakleBlockManager() override = default;
 
     constexpr BlockType* RequisitionBlock( AllocMode Mode ) override {

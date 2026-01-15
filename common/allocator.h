@@ -111,10 +111,7 @@ public:
     using SizeType       = size_t;
     using DifferenceType = std::ptrdiff_t;
 
-    ~HakleAllocator() {
-        printf( "Allocator %s Quit when AllocateCount = %d, ConstructCount = %d\n", typeid( Tp ).name(), AllocateCount.load(),
-                ConstructCount.load() );
-    }
+    ~HakleAllocator() { printf( "Allocator %s Quit when AllocateCount = %d, ConstructCount = %d\n", typeid( Tp ).name(), AllocateCount.load(), ConstructCount.load() ); }
 
     static std::atomic<int> AllocateCount;
     static std::atomic<int> ConstructCount;

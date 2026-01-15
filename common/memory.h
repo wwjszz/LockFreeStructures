@@ -39,17 +39,13 @@ inline constexpr bool RequiresSpecialAlignment() noexcept {
 
 template <class T>
 inline constexpr T* HakleOperatorNew() {
-    HAKLE_CONSTEXPR_IF HAKLE_LIKELY( RequiresSpecialAlignment<T>() ) {
-        return static_cast<T*>( ::operator new( sizeof( T ), static_cast<std::align_val_t>( alignof( T ) ) ) );
-    }
+    HAKLE_CONSTEXPR_IF HAKLE_LIKELY( RequiresSpecialAlignment<T>() ) { return static_cast<T*>( ::operator new( sizeof( T ), static_cast<std::align_val_t>( alignof( T ) ) ) ); }
     return static_cast<T*>( ::operator new( sizeof( T ) ) );
 }
 
 template <class T>
 inline constexpr T* HakleOperatorNewArray( const std::size_t N ) {
-    HAKLE_CONSTEXPR_IF HAKLE_LIKELY( RequiresSpecialAlignment<T>() ) {
-        return static_cast<T*>( ::operator new( N * sizeof( T ), static_cast<std::align_val_t>( alignof( T ) ) ) );
-    }
+    HAKLE_CONSTEXPR_IF HAKLE_LIKELY( RequiresSpecialAlignment<T>() ) { return static_cast<T*>( ::operator new( N * sizeof( T ), static_cast<std::align_val_t>( alignof( T ) ) ) ); }
     return static_cast<T*>( ::operator new( N * sizeof( T ) ) );
 }
 
