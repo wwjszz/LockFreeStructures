@@ -14,6 +14,7 @@
 #include <type_traits>
 
 #include "BlockManager.h"
+#include "ConcurrentQueue.h"
 #include "ConcurrentQueue/Block.h"
 #include "ConcurrentQueue/HashTable.h"
 #include "common/CompressPair.h"
@@ -48,6 +49,8 @@ template <class Traits>
 concept IsConcurrentQueueTraits = requires( const typename Traits::ExplicitAllocatorType& ExplicitAllocator, const typename Traits::ImplicitAllocatorType& ImplicitAllocator ) {
     { Traits::BlockSize } -> std::convertible_to<std::size_t>;
     { Traits::InitialHashSize } -> std::convertible_to<std::size_t>;
+    { Traits::InitialExplicitQueueSize } -> std::convertible_to<std::size_t>;
+    { Traits::InitialImplicitQueueSize } -> std::convertible_to<std::size_t>;
 
     { Traits::MakeDefaultExplicitBlockManager( ExplicitAllocator ) } -> std::same_as<typename Traits::ExplicitBlockManagerType>;
     { Traits::MakeDefaultImplicitBlockManager( ImplicitAllocator ) } -> std::same_as<typename Traits::ImplicitBlockManagerType>;
@@ -282,6 +285,7 @@ public:
     }
 
     template <AllocMode Mode, HAKLE_CONCEPT( std::input_iterator ) Iterator>
+    HAKLE_REQUIRES( requires( Iterator Item ) { ValueType( *Item ); } )
     HAKLE_CPP20_CONSTEXPR bool EnqueueBulk( Iterator ItemFirst, std::size_t Count ) {
         // set original state
         std::size_t OriginIndexEntriesUsed = PO_IndexEntriesUsed();
@@ -799,6 +803,7 @@ public:
     }
 
     template <AllocMode Mode, HAKLE_CONCEPT( std::input_iterator ) Iterator>
+    HAKLE_REQUIRES( requires( Iterator Item ) { ValueType( *Item ); } )
     HAKLE_CPP20_CONSTEXPR bool EnqueueBulk( Iterator ItemFirst, std::size_t Count ) {
         std::size_t OriginTailIndex     = this->TailIndex.load( std::memory_order_relaxed );
         BlockType*  OriginTailBlock     = this->TailBlock();
@@ -1199,9 +1204,11 @@ private:
 
 template <class T, HAKLE_CONCEPT( IsAllocator ) Allocator>
 struct ConcurrentQueueDefaultTraits {
-    static constexpr std::size_t BlockSize            = 32;
-    static constexpr std::size_t InitialBlockPoolSize = 64;
-    static constexpr std::size_t InitialHashSize      = 32;
+    static constexpr std::size_t BlockSize                = 32;
+    static constexpr std::size_t InitialBlockPoolSize     = 64;
+    static constexpr std::size_t InitialHashSize          = 32;
+    static constexpr std::size_t InitialExplicitQueueSize = 32;
+    static constexpr std::size_t InitialImplicitQueueSize = 32;
 
     using AllocatorType = Allocator;
 
@@ -1223,9 +1230,17 @@ struct ConcurrentQueueDefaultTraits {
 
 template <class T, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsConcurrentQueueTraits ) Traits = ConcurrentQueueDefaultTraits<T, Allocator>>
 class ConcurrentQueue : private Traits {
+private:
+    struct ProducerListNode;
+
 public:
+    struct ProducerToken;
+    struct ComsumerToken;
+
     using Traits::BlockSize;
+    using Traits::InitialExplicitQueueSize;
     using Traits::InitialHashSize;
+    using Traits::InitialImplicitQueueSize;
 
     using typename Traits::ExplicitBlockType;
     using typename Traits::ImplicitBlockType;
@@ -1241,11 +1256,22 @@ public:
     using Traits::MakeDefaultExplicitBlockManager;
     using Traits::MakeDefaultImplicitBlockManager;
 
+    using BaseProducer = QueueTypelessBase;
+
     using ExplicitProducer = FastQueue<T, BlockSize, Allocator, ExplicitBlockType, ExplicitBlockManagerType>;
     using ImplicitProducer = SlowQueue<T, BlockSize, Allocator, ImplicitBlockType, ImplicitBlockManagerType>;
 
+    using ExplicitProducerAllocatorTraits = typename HakeAllocatorTraits<AllocatorType>::template RebindTraits<ExplicitProducer>;
+    using ImplicitProducerAllocatorTraits = typename HakeAllocatorTraits<AllocatorType>::template RebindTraits<ImplicitProducer>;
+    using ProducerListNodeAllocatorTraits = typename HakeAllocatorTraits<AllocatorType>::template RebindTraits<ProducerListNode>;
+
+    using ExplicitProducerAllocatorType = typename HakeAllocatorTraits<AllocatorType>::template RebindAlloc<ExplicitProducer>;
+    using ImplicitProducerAllocatorType = typename HakeAllocatorTraits<AllocatorType>::template RebindAlloc<ImplicitProducer>;
+    using ProducerListNodeAllocatorType = typename HakeAllocatorTraits<AllocatorType>::template RebindAlloc<ProducerListNode>;
+
     explicit constexpr ConcurrentQueue( const AllocatorType& InAllocator = AllocatorType{} )
-        : ExplicitManager( MakeDefaultExplicitBlockManager( ExplicitAllocatorType( InAllocator ) ) ), ImplicitManager( MakeDefaultImplicitBlockManager( ImplicitAllocatorType( InAllocator ) ) ) {}
+        : ExplicitProducerAllocatorPair( MakeDefaultExplicitBlockManager( ExplicitAllocatorType( InAllocator ) ), ExplicitProducerAllocatorType( InAllocator ) ),
+          ImplicitProducerAllocatorPair( MakeDefaultImplicitBlockManager( ImplicitAllocatorType( InAllocator ) ), ImplicitProducerAllocatorType( InAllocator ) ) {}
 
     template <class... Args1, class... Args2>
     HAKLE_REQUIRES( HasMakeImplicitBlockManager<Traits>&& HasMakeExplicitBlockManager<Traits>&& std::invocable<decltype( Traits::MakeExplicitBlockManager ), Args1&&...>&&
@@ -1253,12 +1279,16 @@ public:
     explicit constexpr ConcurrentQueue( std::piecewise_construct_t, std::tuple<Args1...> FirstArgs, std::tuple<Args2...> SecondArgs, const AllocatorType& InAllocator )
         :
 #if HAKLE_CPP_VERSION >= 17
-          ExplicitManager( std::apply(
-              []( Args1&&... args1, const AllocatorType& InAllocator ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); },
-              FirstArgs ) ),
-          ImplicitManager( std::apply(
-              []( Args2&&... args2, const AllocatorType& InAllocator ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); },
-              SecondArgs ) )
+          ExplicitProducerAllocatorPair(
+              std::apply(
+                  []( Args1&&... args1, const AllocatorType& InAllocator ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); },
+                  FirstArgs ),
+              ExplicitProducerAllocatorType( InAllocator ) ),
+          ImplicitProducerAllocatorPair(
+              std::apply(
+                  []( Args2&&... args2, const AllocatorType& InAllocator ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); },
+                  SecondArgs ),
+              ImplicitProducerAllocatorType( InAllocator ) )
 #else
           ExplicitManager( hakle::Apply(
               []( Args1&&... args1, const AllocatorType& InAllocator ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); },
@@ -1270,22 +1300,30 @@ public:
     {
     }
 
-private:
-    struct ProducerTypelessBase;
+    explicit constexpr ConcurrentQueue( ConcurrentQueue&& Other ) noexcept
+        : ProducerListsHead( std::move( Other.ProducerListsHead ) ), ProducerCount( std::move( Other.ProducerCount ) ), NextExplicitConsumerId( std::move( Other.NextExplicitConsumerId ) ),
+          GlobalExplicitConsumerOffset( std::move( Other.GlobalExplicitConsumerOffset ) ), ExplicitProducerAllocatorPair( std::move( Other.ExplicitProducerAllocatorPair ) ),
+          ImplicitProducerAllocatorPair( std::move( Other.ImplicitProducerAllocatorPair ) ), ImplicitMap( std::move( Other.ImplicitMap ) ) {}
 
-public:
+
+
+    constexpr ProducerToken* GetProducerToken() noexcept {
+        return new ProducerToken( GetProducerListNode( ProducerType::Explicit ) );
+    }
+
+
     struct ProducerToken {
-        ProducerToken( ProducerToken&& Other ) noexcept : Producer( Other.Producer ) {
-            Other.Producer = nullptr;
-            if ( Producer != nullptr ) {
-                Producer->Token = this;
+        ProducerToken( ProducerToken&& Other ) noexcept : ProducerNode( Other.ProducerNode ) {
+            Other.ProducerNode = nullptr;
+            if ( ProducerNode != nullptr ) {
+                ProducerNode->Token = this;
             }
         }
 
         ~ProducerToken() {
-            if ( Producer != nullptr ) {
-                Producer->Token = nullptr;
-                Producer->Inactive.store( true, std::memory_order_release );
+            if ( ProducerNode != nullptr ) {
+                ProducerNode->Token = nullptr;
+                ProducerNode->Inactive.store( true, std::memory_order_release );
             }
         }
 
@@ -1299,19 +1337,19 @@ public:
 
         void swap( ProducerToken& Other ) noexcept {
             using std::swap;
-            swap( Producer, this->Producer );
-            if ( Producer != nullptr ) {
-                Producer->Token = this;
+            swap( ProducerNode, this->ProducerNode );
+            if ( ProducerNode != nullptr ) {
+                ProducerNode->Token = this;
             }
-            if ( Other.Producer != nullptr ) {
-                Other.Producer->Token = &Other;
+            if ( Other.ProducerNode != nullptr ) {
+                Other.ProducerNode->Token = &Other;
             }
         }
 
-        [[nodiscard]] bool Valid() const noexcept { return Producer != nullptr; }
+        [[nodiscard]] bool Valid() const noexcept { return ProducerNode != nullptr; }
 
     protected:
-        ProducerTypelessBase* Producer;
+        ProducerListNode* ProducerNode;
     };
 
     struct ConsumerToken {
@@ -1337,26 +1375,126 @@ public:
         ConsumerToken& operator=( const ConsumerToken& ) = delete;
 
     private:
-        std::uint32_t         InitialOffset;
-        std::uint32_t         LastKnownGlobalOffset;
-        std::uint32_t         ItemsConsumed;
-        ProducerTypelessBase* CurrentProducer;
-        ProducerTypelessBase* DesiredProducer;
+        std::uint32_t     InitialOffset;
+        std::uint32_t     LastKnownGlobalOffset;
+        std::uint32_t     ItemsConsumed;
+        ProducerListNode* CurrentProducer;
+        ProducerListNode* DesiredProducer;
     };
 
 private:
-    struct ProducerTypelessBase {
-        ProducerTypelessBase* Next{ nullptr };
-        std::atomic<bool>     Inactive{ false };
-        QueueTypelessBase*    Queue{ nullptr };
-        ProducerToken*        Token{ nullptr };
-        ConcurrentQueue*      Parent{ nullptr };
+    enum class ProducerType { Explicit, Implicit };
 
-        virtual ~ProducerTypelessBase() = default;
+    struct ProducerListNode {
+        ProducerListNode* Next{ nullptr };
+        std::atomic<bool> Inactive{ false };
+        BaseProducer*     Producer{ nullptr };
+        ProducerToken*    Token{ nullptr };
+        ConcurrentQueue*  Parent{ nullptr };
+        ProducerType      Type;
+
+        constexpr ProducerListNode( BaseProducer* InProducer, ProducerType InType, ConcurrentQueue* InParent ) noexcept : Producer( InProducer ), Type( InType ), Parent( InParent ) {}
+
+        virtual HAKLE_CPP20_CONSTEXPR ~ProducerListNode() = default;
     };
 
-    ExplicitBlockManagerType                                                                      ExplicitManager{};
-    ImplicitBlockManagerType                                                                      ImplicitManager{};
+    constexpr ProducerListNode* GetProducerListNode( ProducerType Type ) noexcept {
+        for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_relaxed ); Node != nullptr; Node = Node->Next ) {
+            if ( Node->Inactive.load( std::memory_order_relaxed ) && Node->Type == Type ) {
+                bool expected = true;
+                if ( Node->Inactive.compare_exchange_strong( expected, false, std::memory_order_release, std::memory_order_relaxed ) ) {
+                    return Node;
+                }
+            }
+        }
+
+        return AddProducer( CreateProducerListNode( Type ) );
+    }
+
+    constexpr void ReclaimProducerLists() noexcept {
+        for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_relaxed ); Node != nullptr; Node = Node->Next ) {
+            Node->Parent = this;
+        }
+    }
+
+    constexpr ProducerListNode* AddProducer( ProducerListNode* Node ) {
+        if ( Node == nullptr ) {
+            return nullptr;
+        }
+
+        ProducerCount.fetch_add( 1, std::memory_order_relaxed );
+
+        ProducerListNode* Head = ProducerListsHead.load( std::memory_order_relaxed );
+        do {
+            Node->Next = Head;
+        } while ( !ProducerListsHead.compare_exchange_weak( Head, Node, std::memory_order_release, std::memory_order_relaxed ) );
+
+        return Node;
+    }
+
+    template <typename ProducerType Type>
+    constexpr ProducerListNode* CreateProducerListNode() {
+        BaseProducer* producer;
+
+        if constexpr ( Type == ProducerType::Explicit ) {
+            producer = ExplicitProducerAllocatorTraits::Allocate( ExplicitProducerAllocator() );
+            ExplicitProducerAllocatorTraits::Construct( ExplicitProducerAllocator(), producer, InitialExplicitQueueSize, ExplicitManager(), ValueAllocator );
+        }
+        else {
+            producer = ImplicitProducerAllocatorTraits::Allocate( ImplicitProducerAllocator() );
+            ImplicitProducerAllocatorTraits::Construct( ImplicitProducerAllocator(), producer, InitialImplicitQueueSize, ImplicitManager(), ValueAllocator );
+        }
+
+        ProducerListNode* node = ProducerListNodeAllocatorTraits::Allocate( ProducerListNodeAllocator() );
+        ProducerListNodeAllocatorTraits::Construct( ProducerListNodeAllocator(), node, producer, Type, this );
+        return node;
+    }
+
+    // only used in destructor
+    constexpr void DeleteProducerListNode( ProducerListNode* Node ) {
+        if ( Node == nullptr ) {
+            return;
+        }
+
+        ProducerCount.fetch_sub( 1, std::memory_order_relaxed );
+
+        if ( Node->Type == ProducerType::Explicit ) {
+            ExplicitProducerAllocatorTraits::Destroy( ExplicitProducerAllocator(), Node->Producer );
+            ExplicitProducerAllocatorTraits::Deallocate( ExplicitProducerAllocator(), Node->Producer );
+        }
+        else {
+            ImplicitProducerAllocatorTraits::Destroy( ImplicitProducerAllocator(), Node->Producer );
+            ImplicitProducerAllocatorTraits::Deallocate( ImplicitProducerAllocator(), Node->Producer );
+        }
+
+        ProducerListNodeAllocatorTraits::Destroy( ProducerListNodeAllocator(), Node );
+        ProducerListNodeAllocatorTraits::Deallocate( ProducerListNodeAllocator(), Node );
+    }
+
+    std::atomic<ProducerListNode*> ProducerListsHead{};
+    std::atomic<uint32_t>          ProducerCount{};
+
+    std::atomic<std::uint32_t> NextExplicitConsumerId{};
+    std::atomic<std::uint32_t> GlobalExplicitConsumerOffset{};
+
+    AllocatorType                 ValueAllocator{};
+    ProducerListNodeAllocatorType ProducerListNodeAllocator{};
+
+    CompressPair<ExplicitBlockManagerType, ExplicitProducerAllocatorType> ExplicitProducerAllocatorPair{};
+    CompressPair<ImplicitBlockManagerType, ImplicitProducerAllocatorType> ImplicitProducerAllocatorPair{};
+
+    constexpr ExplicitBlockManagerType& ExplicitManager() noexcept { return ExplicitProducerAllocatorPair.First(); }
+    constexpr ImplicitBlockManagerType& ImplicitManager() noexcept { return ImplicitProducerAllocatorPair.First(); }
+
+    constexpr ExplicitProducerAllocatorType& ExplicitProducerAllocator() noexcept { return ExplicitProducerAllocatorPair.Second(); }
+    constexpr ImplicitProducerAllocatorType& ImplicitProducerAllocator() noexcept { return ImplicitProducerAllocatorPair.Second(); }
+
+    constexpr const ExplicitBlockManagerType& ExplicitManager() const noexcept { return ExplicitProducerAllocatorPair.First(); }
+    constexpr const ImplicitBlockManagerType& ImplicitManager() const noexcept { return ImplicitProducerAllocatorPair.First(); }
+
+    constexpr const ExplicitProducerAllocatorType& ExplicitProducerAllocator() const noexcept { return ExplicitProducerAllocatorPair.Second(); }
+    constexpr const ImplicitProducerAllocatorType& ImplicitProducerAllocator() const noexcept { return ImplicitProducerAllocatorPair.Second(); }
+
     HashTable<details::thread_id_t, ImplicitProducer*, InitialHashSize, details::thread_hash> ImplicitMap{};
 };
 

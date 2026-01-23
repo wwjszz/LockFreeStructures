@@ -99,7 +99,6 @@ struct HakeAllocatorTraits {
 };
 
 #if defined( ENABLE_MEMORY_LEAK_DETECTION )
-
 template <class Tp>
 class HakleAllocator {
 public:
