@@ -113,14 +113,7 @@ public:
         MainHash().store( Node, std::memory_order_relaxed );
     }
 
-    HAKLE_CPP20_CONSTEXPR ~HashTable() {
-        auto CurrentHash = MainHash().load( std::memory_order_relaxed );
-        while ( CurrentHash != nullptr ) {
-            auto Prev = CurrentHash->Prev;
-            DeleteHashNode( CurrentHash );
-            CurrentHash = Prev;
-        }
-    }
+    HAKLE_CPP20_CONSTEXPR ~HashTable() { Clear(); }
 
     constexpr HashTable( const HashTable& Other ) = delete;
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
@@ -135,8 +128,20 @@ public:
     constexpr HashTable& operator=( const HashTable& Other ) = delete;
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.
     constexpr HashTable& operator=( HashTable&& Other ) noexcept {
+        Clear();
+        MainHash().store( nullptr, std::memory_order_relaxed );
+        EntriesCount.store( 0, std::memory_order_relaxed );
         swap( Other );
         return *this;
+    }
+
+    constexpr void Clear() noexcept {
+        auto CurrentHash = MainHash().load( std::memory_order_relaxed );
+        while ( CurrentHash != nullptr ) {
+            auto Prev = CurrentHash->Prev;
+            DeleteHashNode( CurrentHash );
+            CurrentHash = Prev;
+        }
     }
 
     // NOTE: This is intentionally not thread safe; it is up to the user to synchronize this call.

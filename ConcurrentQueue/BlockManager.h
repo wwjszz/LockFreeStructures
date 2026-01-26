@@ -59,10 +59,7 @@ concept CheckBlockManager = IsBlock<BLOCK_TYPE> && std::same_as<BLOCK_TYPE, type
 #endif
 
 // TODO: position?
-enum class AllocMode {
-    CanAlloc,
-    CannotAlloc
-};
+enum class AllocMode { CanAlloc, CannotAlloc };
 
 struct MemoryBase {
     bool HasOwner{ false };
@@ -84,7 +81,24 @@ public:
 
     constexpr explicit FreeList( const AllocatorType& InAllocator = AllocatorType{} ) : AllocatorPair( nullptr, InAllocator ) {}
 
-    HAKLE_CPP20_CONSTEXPR ~FreeList() {
+    HAKLE_CPP20_CONSTEXPR ~FreeList() { Clear(); }
+
+    constexpr FreeList( FreeList&& Other ) noexcept : AllocatorPair( std::move( Other.Head().load( std::memory_order_relaxed ) ), std::move( Other.Allocator() ) ) {
+        Other.Head().store( nullptr, std::memory_order_relaxed );
+    }
+
+    constexpr FreeList& operator=( FreeList&& Other ) noexcept {
+        Clear();
+        Head().store( Other.Head().load( std::memory_order_relaxed ), std::memory_order_relaxed );
+        Allocator() = std::move( Other.Allocator() );
+        Other.Head().store( nullptr, std::memory_order_relaxed );
+        return *this;
+    }
+
+    constexpr FreeList( const FreeList& Other )            = delete;
+    constexpr FreeList& operator=( const FreeList& Other ) = delete;
+
+    constexpr void Clear() noexcept {
         Node* CurrentNode = Head().load( std::memory_order_relaxed );
         while ( CurrentNode != nullptr ) {
             Node* Next = CurrentNode->FreeListNext.load( std::memory_order_relaxed );
@@ -182,7 +196,28 @@ public:
         }
     }
 
-    HAKLE_CPP20_CONSTEXPR ~BlockPool() {
+    HAKLE_CPP20_CONSTEXPR ~BlockPool() { Clear(); }
+
+    constexpr BlockPool( BlockPool&& Other ) noexcept : AllocatorPair( std::move( Other.Size() ), std::move( Other.Allocator() ) ), Index( std::move( Other.Index ) ), Head( std::move( Other.Head ) ) {
+        Other.Head   = nullptr;
+        Other.Size() = Other.Index = 0;
+    }
+
+    constexpr BlockPool& operator=( BlockPool&& Other ) noexcept {
+        Clear();
+        Size()       = std::move( Other.Size() );
+        Allocator()  = std::move( Other.Allocator() );
+        Index        = std::move( Other.Index );
+        Head         = std::move( Other.Head );
+        Other.Head   = nullptr;
+        Other.Size() = Other.Index = 0;
+        return *this;
+    }
+
+    constexpr BlockPool( const BlockPool& Other )            = delete;
+    constexpr BlockPool& operator=( const BlockPool& Other ) = delete;
+
+    constexpr void Clear() noexcept {
         AllocatorTraits::Destroy( Allocator(), Head, Size() );
         AllocatorTraits::Deallocate( Allocator(), Head, Size() );
     }
@@ -256,6 +291,12 @@ public:
 
     constexpr explicit HakleBlockManager( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} ) : BaseManager( InAllocator ), Pool( InSize, InAllocator ), List( InAllocator ) {}
     HAKLE_CPP20_CONSTEXPR ~HakleBlockManager() override = default;
+
+    constexpr HakleBlockManager( HakleBlockManager&& Other ) noexcept            = default;
+    constexpr HakleBlockManager& operator=( HakleBlockManager&& Other ) noexcept = default;
+
+    constexpr HakleBlockManager( const HakleBlockManager& Other )            = delete;
+    constexpr HakleBlockManager& operator=( const HakleBlockManager& Other ) = delete;
 
     constexpr BlockType* RequisitionBlock( AllocMode Mode ) override {
         BlockType* Block = Pool.GetBlock();
