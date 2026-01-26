@@ -180,6 +180,15 @@ public:
     template <class Up>
     explicit constexpr HakleAllocator( const HakleAllocator<Up>& ) noexcept {}
 
+    template <class Up>
+    explicit constexpr HakleAllocator( const HakleAllocator<Up>&& ) noexcept {}
+
+    template <class Up>
+    constexpr HakleAllocator& operator=( const HakleAllocator<Up>& ) noexcept {}
+
+    template <class Up>
+    constexpr HakleAllocator& operator=( const HakleAllocator<Up>&& ) noexcept {}
+
     static constexpr Pointer Allocate() { return HAKLE_OPERATOR_NEW( Tp ); }
     static constexpr Pointer Allocate( SizeType n ) { return HAKLE_OPERATOR_NEW_ARRAY( Tp, n ); }
 

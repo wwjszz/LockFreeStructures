@@ -198,7 +198,8 @@ public:
 
     HAKLE_CPP20_CONSTEXPR ~BlockPool() { Clear(); }
 
-    constexpr BlockPool( BlockPool&& Other ) noexcept : AllocatorPair( std::move( Other.Size() ), std::move( Other.Allocator() ) ), Index( std::move( Other.Index.load( std::memory_order_relaxed ) ) ), Head( std::move( Other.Head ) ) {
+    constexpr BlockPool( BlockPool&& Other ) noexcept
+        : AllocatorPair( std::move( Other.Size() ), std::move( Other.Allocator() ) ), Index( std::move( Other.Index.load( std::memory_order_relaxed ) ) ), Head( std::move( Other.Head ) ) {
         Other.Head   = nullptr;
         Other.Size() = 0;
         Other.Index.store( 0, std::memory_order_relaxed );
@@ -208,7 +209,7 @@ public:
         Clear();
         Size()       = std::move( Other.Size() );
         Allocator()  = std::move( Other.Allocator() );
-        Index        = std::move( Other.Index );
+        Index        = std::move( Other.Index.load( std::memory_order_relaxed ) );
         Head         = std::move( Other.Head );
         Other.Head   = nullptr;
         Other.Size() = Other.Index = 0;

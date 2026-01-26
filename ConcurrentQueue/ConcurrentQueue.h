@@ -1237,6 +1237,7 @@ public:
     struct ConsumerToken;
 
     using Traits::BlockSize;
+    using Traits::InitialBlockPoolSize;
     using Traits::InitialExplicitQueueSize;
     using Traits::InitialHashSize;
     using Traits::InitialImplicitQueueSize;
@@ -1250,7 +1251,6 @@ public:
 
     using typename Traits::ExplicitBlockManagerType;
     using typename Traits::ImplicitBlockManagerType;
-    using typename Traits::InitialBlockPoolSize;
 
     using Traits::MakeDefaultExplicitBlockManager;
     using Traits::MakeDefaultImplicitBlockManager;
@@ -1296,7 +1296,7 @@ public:
     HAKLE_CPP20_CONSTEXPR ~ConcurrentQueue() { ClearList(); }
 
     explicit constexpr ConcurrentQueue( ConcurrentQueue&& Other ) noexcept
-        : ProducerListsHead( std::move( Other.ProducerListsHead ) ), ProducerCount( std::move( Other.ProducerCount ) ),
+        : ProducerListsHead( std::move( Other.ProducerListsHead ) ), ProducerCount( std::move( Other.ProducerCount.load( std::memory_order_relaxed ) ) ),
           ExplicitProducerAllocatorPair( std::move( Other.ExplicitManager() ), std::move( Other.ExplicitProducerAllocator() ) ),
           ImplicitProducerAllocatorPair( std::move( Other.ImplicitManager() ), std::move( Other.ImplicitProducerAllocator() ) ),
           ValueAllocatorPair( std::move( Other.NextExplicitConsumerId() ), std::move( Other.ValueAllocator() ) ),
@@ -1538,6 +1538,7 @@ public:
     }
 
     struct ProducerToken {
+        friend class ConcurrentQueue;
         explicit ProducerToken( ConcurrentQueue& queue ) : ProducerNode( queue.GetProducerListNode( ProducerType::Explicit ) ) {}
         ProducerToken( ProducerToken&& Other ) noexcept : ProducerNode( Other.ProducerNode ) {
             Other.ProducerNode = nullptr;
@@ -1689,10 +1690,10 @@ private:
         template <HAKLE_CONCEPT( std::output_iterator<T&&> ) Iterator>
         constexpr bool ProducerDequeueBulk( Iterator ItemFirst, std::size_t MaxCount ) {
             if ( Type == ProducerType::Explicit ) {
-                return GetExplicitProducer()->template DequeueBulk( ItemFirst, MaxCount );
+                return GetExplicitProducer()->DequeueBulk( ItemFirst, MaxCount );
             }
             else {
-                return GetImplicitProducer()->template DequeueBulk( ItemFirst, MaxCount );
+                return GetImplicitProducer()->DequeueBulk( ItemFirst, MaxCount );
             }
         }
 
@@ -1733,16 +1734,16 @@ private:
         return Node;
     }
 
-    constexpr ProducerListNode* CreateProducerListNode(ProducerType Type) {
+    constexpr ProducerListNode* CreateProducerListNode( ProducerType Type ) {
         BaseProducer* producer = nullptr;
 
-        if  ( Type == ProducerType::Explicit ) {
+        if ( Type == ProducerType::Explicit ) {
             producer = ExplicitProducerAllocatorTraits::Allocate( ExplicitProducerAllocator() );
-            ExplicitProducerAllocatorTraits::Construct( ExplicitProducerAllocator(), static_cast<ExplicitProducer*>(producer), InitialExplicitQueueSize, ExplicitManager(), ValueAllocator() );
+            ExplicitProducerAllocatorTraits::Construct( ExplicitProducerAllocator(), static_cast<ExplicitProducer*>( producer ), InitialExplicitQueueSize, ExplicitManager(), ValueAllocator() );
         }
         else {
             producer = ImplicitProducerAllocatorTraits::Allocate( ImplicitProducerAllocator() );
-            ImplicitProducerAllocatorTraits::Construct( ImplicitProducerAllocator(), static_cast<ImplicitProducer*>(producer), InitialImplicitQueueSize, ImplicitManager(), ValueAllocator() );
+            ImplicitProducerAllocatorTraits::Construct( ImplicitProducerAllocator(), static_cast<ImplicitProducer*>( producer ), InitialImplicitQueueSize, ImplicitManager(), ValueAllocator() );
         }
 
         ProducerListNode* node = ProducerListNodeAllocatorTraits::Allocate( ProducerListNodeAllocator() );
@@ -1835,7 +1836,7 @@ private:
         return true;
     }
 
-    constexpr ImplicitProducer* GetOrAddImplicitProducer() {
+    ImplicitProducer* GetOrAddImplicitProducer() {
         details::thread_id_t thread_id = details::thread_id();
         ImplicitProducer*    producer  = nullptr;
         HashTableStatus Result = ImplicitMap.GetOrAddByFunc( thread_id, producer, [ this, &producer ]() { return producer = GetProducerListNode( ProducerType::Implicit )->GetImplicitProducer(); } );
