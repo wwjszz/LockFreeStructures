@@ -10,6 +10,7 @@
 #include <concepts>
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <thread>
 #include <type_traits>
 
@@ -209,7 +210,7 @@ public:
         std::size_t CurrentTailIndex = this->TailIndex.load( std::memory_order_relaxed );
         std::size_t NewTailIndex     = CurrentTailIndex + 1;
         std::size_t InnerIndex       = CurrentTailIndex & ( BlockSize - 1 );
-        if ( InnerIndex == 0 ) {
+        if HAKLE_UNLIKELY ( InnerIndex == 0 ) {
             BlockType* OldTailBlock = this->TailBlock();
             // zero, in fact
             // we must find a new block
@@ -221,11 +222,11 @@ public:
             else {
                 // we need to find a new block index and get a new block from block manager
                 // TODO: add MAX_SIZE check
-                if ( !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
+                if HAKLE_UNLIKELY ( !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
                     return false;
                 }
 
-                if ( CurrentIndexEntryArray.load( std::memory_order_relaxed ) == nullptr || PO_IndexEntriesUsed() == PO_IndexEntriesSize() ) {
+                if HAKLE_UNLIKELY ( CurrentIndexEntryArray.load( std::memory_order_relaxed ) == nullptr || PO_IndexEntriesUsed() == PO_IndexEntriesSize() ) {
                     // need to create a new index entry array
                     HAKLE_CONSTEXPR_IF( Mode == AllocMode::CannotAlloc ) { return false; }
                     else if ( !CreateNewBlockIndexArray( PO_IndexEntriesUsed() ) ) {
@@ -234,12 +235,12 @@ public:
                 }
 
                 BlockType* NewBlock = BlockManager.RequisitionBlock( Mode );
-                if ( NewBlock == nullptr ) {
+                if HAKLE_UNLIKELY ( NewBlock == nullptr ) {
                     return false;
                 }
 
                 NewBlock->Reset();
-                if ( this->TailBlock() == nullptr ) {
+                if HAKLE_UNLIKELY ( this->TailBlock() == nullptr ) {
                     NewBlock->Next = NewBlock;
                 }
                 else {
@@ -306,7 +307,7 @@ public:
         std::size_t BlockCountNeed   = ( ( Count + StartTailIndex - 1 ) >> BlockSizeLog2 ) - ( static_cast<std::make_signed_t<std::size_t>>( StartTailIndex - 1 ) >> BlockSizeLog2 );
         std::size_t CurrentTailIndex = LastTailIndex & ~( BlockSize - 1 );
 
-        if ( BlockCountNeed > 0 ) {
+        if HAKLE_LIKELY ( BlockCountNeed > 0 ) {
             while ( BlockCountNeed > 0 && this->TailBlock() != nullptr && this->TailBlock()->Next->IsEmpty() ) {
                 // we can re-use that block
                 --BlockCountNeed;
@@ -328,12 +329,12 @@ public:
                 CurrentTailIndex += BlockSize;
 
                 // TODO: add MAX_SIZE check
-                if ( !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
+                if HAKLE_UNLIKELY ( !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
                     RollBack();
                     return false;
                 }
 
-                if ( CurrentIndexEntryArray.load( std::memory_order_relaxed ) == nullptr || PO_IndexEntriesUsed() == PO_IndexEntriesSize() ) {
+                if HAKLE_UNLIKELY ( CurrentIndexEntryArray.load( std::memory_order_relaxed ) == nullptr || PO_IndexEntriesUsed() == PO_IndexEntriesSize() ) {
                     // need to create a new index entry array
                     HAKLE_CONSTEXPR_IF( Mode == AllocMode::CannotAlloc ) {
                         RollBack();
@@ -348,7 +349,7 @@ public:
                 }
 
                 BlockType* NewBlock = BlockManager.RequisitionBlock( Mode );
-                if ( NewBlock == nullptr ) {
+                if HAKLE_UNLIKELY ( NewBlock == nullptr ) {
                     RollBack();
                     return false;
                 }
@@ -754,19 +755,19 @@ public:
         std::size_t CurrentTailIndex = this->TailIndex.load( std::memory_order_relaxed );
         std::size_t NewTailIndex     = CurrentTailIndex + 1;
         std::size_t InnerIndex       = CurrentTailIndex & ( BlockSize - 1 );
-        if ( InnerIndex == 0 ) {
+        if HAKLE_UNLIKELY ( InnerIndex == 0 ) {
             // TODO: add MAX_SIZE check
-            if ( !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
+            if HAKLE_UNLIKELY ( !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize ) ) {
                 return false;
             }
 
             IndexEntry* NewIndexEntry = nullptr;
-            if ( !InsertBlockIndexEntry<Mode>( NewIndexEntry, CurrentTailIndex ) ) {
+            if HAKLE_UNLIKELY ( !InsertBlockIndexEntry<Mode>( NewIndexEntry, CurrentTailIndex ) ) {
                 return false;
             }
 
             BlockType* NewBlock = BlockManager().RequisitionBlock( Mode );
-            if ( NewBlock == nullptr ) {
+            if HAKLE_UNLIKELY ( NewBlock == nullptr ) {
                 RewindBlockIndexTail();
                 NewIndexEntry->Value.store( nullptr, std::memory_order_relaxed );
                 return false;
@@ -798,7 +799,7 @@ public:
         this->TailIndex.store( NewTailIndex, std::memory_order_release );
         return true;
     }
-
+    ValueAllocatorType TestAllocator{};
     template <AllocMode Mode, HAKLE_CONCEPT( std::input_iterator ) Iterator>
     HAKLE_REQUIRES( requires( Iterator Item ) { ValueType( *Item ); } )
     HAKLE_CPP20_CONSTEXPR bool EnqueueBulk( Iterator ItemFirst, std::size_t Count ) {
@@ -806,7 +807,7 @@ public:
         BlockType*  OriginTailBlock     = this->TailBlock();
         BlockType*  FirstAllocatedBlock = nullptr;
 
-        auto RollBack = [ this, &FirstAllocatedBlock, OriginTailIndex, OriginTailBlock ]() {
+        auto&& RollBack = [ this, &FirstAllocatedBlock, OriginTailIndex, OriginTailBlock ]() {
             IndexEntry* IndexEntry       = nullptr;
             std::size_t CurrentTailIndex = ( OriginTailIndex - 1 ) & ~( BlockSize - 1 );
             for ( BlockType* Block = FirstAllocatedBlock; Block; Block = Block->Next ) {
@@ -823,39 +824,41 @@ public:
         std::size_t NeedCount        = ( ( OriginTailIndex + Count - 1 ) >> BlockSizeLog2 ) - ( static_cast<std::make_signed_t<std::size_t>>( OriginTailIndex - 1 ) >> BlockSizeLog2 );
         std::size_t CurrentTailIndex = ( OriginTailIndex - 1 ) & ~( BlockSize - 1 );
         // allocate index entry and block
-        while ( NeedCount > 0 ) {
-            CurrentTailIndex += BlockSize;
-            --NeedCount;
+        if ( NeedCount > 0 ) {
+            while ( NeedCount > 0 ) {
+                CurrentTailIndex += BlockSize;
+                --NeedCount;
 
-            bool        IndexInserted = false;
-            BlockType*  NewBlock      = nullptr;
-            IndexEntry* IndexEntry    = nullptr;
+                bool        IndexInserted = false;
+                BlockType*  NewBlock      = nullptr;
+                IndexEntry* IndexEntry    = nullptr;
 
-            // TODO: add MAX_SIZE check
-            bool full = !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize );
-            if ( full || !( IndexInserted = InsertBlockIndexEntry<Mode>( IndexEntry, CurrentTailIndex ) ) || !( NewBlock = BlockManager().RequisitionBlock( Mode ) ) ) {
-                if ( IndexInserted ) {
-                    RewindBlockIndexTail();
-                    IndexEntry->Value.store( nullptr, std::memory_order_relaxed );
+                // TODO: add MAX_SIZE check
+                bool full = !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize );
+                if ( full || !( IndexInserted = InsertBlockIndexEntry<Mode>( IndexEntry, CurrentTailIndex ) ) || !( NewBlock = BlockManager().RequisitionBlock( Mode ) ) ) {
+                    if ( IndexInserted ) {
+                        RewindBlockIndexTail();
+                        IndexEntry->Value.store( nullptr, std::memory_order_relaxed );
+                    }
+                    RollBack();
+                    return false;
                 }
-                RollBack();
-                return false;
-            }
 
-            NewBlock->Reset();
-            NewBlock->Next = nullptr;
+                NewBlock->Reset();
+                NewBlock->Next = nullptr;
 
-            IndexEntry->Value.store( NewBlock, std::memory_order_relaxed );
+                IndexEntry->Value.store( NewBlock, std::memory_order_relaxed );
 
-            if ( ( OriginTailIndex & ( BlockSize - 1 ) ) != 0 || FirstAllocatedBlock != nullptr ) {
-                this->TailBlock()->Next = NewBlock;
-            }
-            this->TailBlock() = NewBlock;
-            if ( FirstAllocatedBlock == nullptr ) {
-                FirstAllocatedBlock = NewBlock;
+                if ( ( OriginTailIndex & ( BlockSize - 1 ) ) != 0 || FirstAllocatedBlock != nullptr ) {
+                    this->TailBlock()->Next = NewBlock;
+                }
+                this->TailBlock() = NewBlock;
+                if ( FirstAllocatedBlock == nullptr ) {
+                    FirstAllocatedBlock = NewBlock;
+                }
             }
         }
-
+        // std::allocator<T> alloc;
         // we already have enough blocks, let's fill them
         std::size_t StartInnerIndex = OriginTailIndex & ( BlockSize - 1 );
         BlockType*  StartBlock      = ( StartInnerIndex == 0 && FirstAllocatedBlock != nullptr ) ? FirstAllocatedBlock : OriginTailBlock;
@@ -864,8 +867,9 @@ public:
             std::size_t EndInnerIndex = ( CurrentBlock == this->TailBlock() ) ? ( OriginTailIndex + Count - 1 ) & ( BlockSize - 1 ) : ( BlockSize - 1 );
             HAKLE_CONSTEXPR_IF( std::is_nothrow_constructible<ValueType, typename std::iterator_traits<Iterator>::value_type>::value ) {
                 while ( StartInnerIndex <= EndInnerIndex ) {
-                    ValueAllocatorTraits::Construct( this->ValueAllocator(), ( *CurrentBlock )[ StartInnerIndex ], *ItemFirst++ );
-                    ++StartInnerIndex;
+                    // new ( ( *CurrentBlock )[ StartInnerIndex++ ] ) ValueType( ( *ItemFirst++ ) );
+                    ValueAllocatorTraits::Construct( this->ValueAllocatorPair.Second(), ( *CurrentBlock )[ StartInnerIndex++ ], *ItemFirst++ );
+                    // std::allocator_traits<std::allocator<T>>::construct( alloc, ( *CurrentBlock )[ StartInnerIndex++ ], *ItemFirst++ );
                 }
             }
             else {
@@ -1072,7 +1076,7 @@ private:
     template <AllocMode Mode>
     HAKLE_CPP20_CONSTEXPR bool InsertBlockIndexEntry( IndexEntry*& IdxEntry, std::size_t BlockStartIndex ) noexcept {
         IndexEntryArray* LocalIndexEntriesArray = CurrentIndexEntryArray().load( std::memory_order_relaxed );
-        if ( LocalIndexEntriesArray == nullptr ) {
+        if HAKLE_UNLIKELY ( LocalIndexEntriesArray == nullptr ) {
             return false;
         }
 
@@ -1148,7 +1152,7 @@ private:
         // noexcept
         IndexEntryArrayAllocatorTraits::Construct( IndexEntryArrayAllocator(), NewIndexEntryArray );
 
-        if ( Prev != nullptr ) {
+        if HAKLE_LIKELY ( Prev != nullptr ) {
             std::size_t Tail = Prev->Tail.load( std::memory_order_relaxed );
             std::size_t i = Tail, j = 0;
             do {

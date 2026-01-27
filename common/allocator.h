@@ -10,6 +10,7 @@
 #if defined( ENABLE_MEMORY_LEAK_DETECTION )
 #include <atomic>
 #include <cstdio>
+#include <mutex>
 #include <typeinfo>
 #endif
 
@@ -99,7 +100,6 @@ struct HakeAllocatorTraits {
 };
 
 #if defined( ENABLE_MEMORY_LEAK_DETECTION )
-#pragma message( "ENABLE_MEMORY_LEAK_DETECTION is defined" )
 std::mutex print_mtx;
 template <class Tp>
 class HakleAllocator {
@@ -133,8 +133,8 @@ public:
     ~HakleAllocator() = default;
 
     struct Info {
-        std::atomic<int> ConstructCount{0};
-        std::atomic<int> AllocateCount{0};
+        std::atomic<int> ConstructCount{ 0 };
+        std::atomic<int> AllocateCount{ 0 };
         Info() {
             // {
             //     std::lock_guard<std::mutex> lock( print_mtx );
@@ -142,11 +142,11 @@ public:
             // }
         }
         ~Info() {
-                if ( AllocateCount.load() != 0 || ConstructCount.load() != 0 ) {
-                    std::lock_guard<std::mutex> lock( print_mtx );
-                    printf( "\033[31m[%s] Quit when AllocateCount = %d, ConstructCount = %d\033[0m\n", typeid( Tp ).name(), AllocateCount.load(), ConstructCount.load() );
-                }
-                // printf( "[%s] DELETED\n", typeid( Tp ).name() );
+            if ( AllocateCount.load() != 0 || ConstructCount.load() != 0 ) {
+                std::lock_guard<std::mutex> lock( print_mtx );
+                printf( "\033[31m[%s] Quit when AllocateCount = %d, ConstructCount = %d\033[0m\n", typeid( Tp ).name(), AllocateCount.load(), ConstructCount.load() );
+            }
+            // printf( "[%s] DELETED\n", typeid( Tp ).name() );
         }
     };
 

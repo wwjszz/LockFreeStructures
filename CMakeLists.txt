@@ -1,7 +1,7 @@
 ﻿cmake_minimum_required(VERSION 3.14)
 project(LockFreeStructures CXX)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -117,14 +117,15 @@ target_compile_definitions(fastqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECT
 target_compile_definitions(slowqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
 
 if (CMAKE_CXX_STANDARD EQUAL 11)
-    add_executable(concurrentqueuetest_benchmarks tests/concurrentqueuetest_benchmarks.cpp)
-    target_link_libraries(concurrentqueuetest_benchmarks PRIVATE gtest_main)
-    target_include_directories(concurrentqueuetest_benchmarks PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty)
 
-    add_executable(other_test tests/other_test.cpp)
-    target_link_libraries(other_test PRIVATE gtest_main)
-    target_include_directories(other_test PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty)
 endif()
+
+add_executable(other_test tests/other_test.cpp)
+target_link_libraries(other_test PRIVATE gtest_main)
+    # target_include_directories(other_test PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty)
+
+add_executable(concurrentqueuetest_benchmarks tests/concurrentqueuetest_benchmarks.cpp)
+target_link_libraries(concurrentqueuetest_benchmarks PRIVATE gtest_main)
 
 add_executable(concurrentqueuetest_check tests/concurrentqueuetest_check.cpp)
 target_link_libraries(concurrentqueuetest_check PRIVATE gtest_main)

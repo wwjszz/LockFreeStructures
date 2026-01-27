@@ -1,11 +1,12 @@
-#include "concurrentqueue.h"
 #include "ConcurrentQueue/ConcurrentQueue.h"
+#include "concurrentqueue.h"
 #include <algorithm>
 #include <atomic>
-#include <boost/lockfree/queue.hpp>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdio>
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
@@ -13,6 +14,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#define USE_MY 1
 
 using Clock = std::chrono::steady_clock;
 
@@ -42,430 +45,440 @@ void PrintResult( const Result& r, std::size_t totalItems ) {
               << "  totalItems=" << totalItems << "\n";
 }
 
-#if USE_MY
+#ifdef USE_MY
 // 2. 普通 Enqueue / TryDequeue
-Result TestCQ_NormalEnqDeq(const BenchmarkConfig& cfg) {
+Result TestCQ_NormalEnqDeq( const BenchmarkConfig& cfg ) {
     hakle::ConcurrentQueue<int> queue;
-    const std::size_t totalItems = cfg.prodThreads * cfg.itemsPerProd;
+    const std::size_t           totalItems = cfg.prodThreads * cfg.itemsPerProd;
 
-    std::atomic<std::size_t> produced{0};
-    std::atomic<std::size_t> consumed{0};
+    std::atomic<std::size_t> produced{ 0 };
+    std::atomic<std::size_t> consumed{ 0 };
 
-    double seconds = MeasureSeconds([&] {
+    double seconds = MeasureSeconds( [ & ] {
         std::vector<std::thread> producers, consumers;
 
-        for (std::size_t p = 0; p < cfg.prodThreads; ++p) {
-            producers.emplace_back([&, p] {
-                for (std::size_t i = 0; i < cfg.itemsPerProd; ++i) {
-                    int v = static_cast<int>(p * cfg.itemsPerProd + i);
-                    queue.Enqueue(v);
-                    produced.fetch_add(1, std::memory_order_relaxed);
+        for ( std::size_t p = 0; p < cfg.prodThreads; ++p ) {
+            producers.emplace_back( [ &, p ] {
+                for ( std::size_t i = 0; i < cfg.itemsPerProd; ++i ) {
+                    int v = static_cast<int>( p * cfg.itemsPerProd + i );
+                    queue.Enqueue( v );
+                    produced.fetch_add( 1, std::memory_order_relaxed );
                 }
-            });
+            } );
         }
 
-        for (std::size_t c = 0; c < cfg.consThreads; ++c) {
-            consumers.emplace_back([&] {
-                int value;
-                while (consumed.load(std::memory_order_relaxed) < totalItems) {
-                    if (queue.TryDequeue(value)) {
-                        consumed.fetch_add(1, std::memory_order_relaxed);
-                    }
-                }
-            });
-        }
+        // for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+        //     consumers.emplace_back( [ & ] {
+        //         int value;
+        //         while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+        //             if ( queue.TryDequeue( value ) ) {
+        //                 consumed.fetch_add( 1, std::memory_order_relaxed );
+        //             }
+        //         }
+        //     } );
+        // }
 
-        for (auto& t : producers) t.join();
-        for (auto& t : consumers) t.join();
-    });
+        for ( auto& t : producers )
+            t.join();
+        for ( auto& t : consumers )
+            t.join();
+    } );
 
-    double thr = (double)totalItems / seconds;
+    double thr = ( double )totalItems / seconds;
     Result r{ "CQ_NormalEnqDeq", seconds, thr };
-    PrintResult(r, totalItems);
+    PrintResult( r, totalItems );
     return r;
 }
 
 // 3. 普通 Bulk Enqueue / TryDequeueBulk
-Result TestCQ_BulkEnqDeq(const BenchmarkConfig& cfg) {
+Result TestCQ_BulkEnqDeq( const BenchmarkConfig& cfg ) {
     constexpr std::size_t BULK = 256;
 
     hakle::ConcurrentQueue<int> queue;
-    const std::size_t totalItems = cfg.prodThreads * cfg.itemsPerProd;
+    const std::size_t           totalItems = cfg.prodThreads * cfg.itemsPerProd;
 
-    std::atomic<std::size_t> produced{0};
-    std::atomic<std::size_t> consumed{0};
+    std::atomic<std::size_t> produced{ 0 };
+    std::atomic<std::size_t> consumed{ 0 };
 
-    double seconds = MeasureSeconds([&] {
+    double seconds = MeasureSeconds( [ & ] {
         std::vector<std::thread> producers, consumers;
 
         // producers
-        for (std::size_t p = 0; p < cfg.prodThreads; ++p) {
-            producers.emplace_back([&, p] {
-                std::vector<int> buf(BULK);
-                std::size_t sent = 0;
-                while (sent < cfg.itemsPerProd) {
-                    std::size_t n = std::min(BULK, cfg.itemsPerProd - sent);
-                    for (std::size_t i = 0; i < n; ++i) {
-                        buf[i] = static_cast<int>(p * cfg.itemsPerProd + sent + i);
+        for ( std::size_t p = 0; p < cfg.prodThreads; ++p ) {
+            producers.emplace_back( [ &, p ] {
+                std::vector<int> buf( BULK );
+                std::size_t      sent = 0;
+                while ( sent < cfg.itemsPerProd ) {
+                    std::size_t n = std::min( BULK, cfg.itemsPerProd - sent );
+                    for ( std::size_t i = 0; i < n; ++i ) {
+                        buf[ i ] = static_cast<int>( p * cfg.itemsPerProd + sent + i );
                     }
-                    queue.EnqueueBulk(buf.data(), n);
-                    produced.fetch_add(n, std::memory_order_relaxed);
+                    if ( !queue.EnqueueBulk( buf.data(), n ) ) {
+                        exit( 0 );
+                    }
+                    produced.fetch_add( n, std::memory_order_relaxed );
                     sent += n;
                 }
-            });
+            } );
         }
 
         // consumers
-        for (std::size_t c = 0; c < cfg.consThreads; ++c) {
-            consumers.emplace_back([&] {
-                std::vector<int> buf(BULK);
-                while (consumed.load(std::memory_order_relaxed) < totalItems) {
-                    std::size_t got = queue.TryDequeueBulk(buf.data(), BULK);
-                    if (got > 0) {
-                        consumed.fetch_add(got, std::memory_order_relaxed);
-                    }
-                }
-            });
-        }
+        // for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+        //     consumers.emplace_back( [ & ] {
+        //         std::vector<int> buf( BULK );
+        //         while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+        //             std::size_t got = queue.TryDequeueBulk( buf.data(), BULK );
+        //             if ( got > 0 ) {
+        //                 consumed.fetch_add( got, std::memory_order_relaxed );
+        //             }
+        //         }
+        //     } );
+        // }
 
-        for (auto& t : producers) t.join();
-        for (auto& t : consumers) t.join();
-    });
+        for ( auto& t : producers )
+            t.join();
+        for ( auto& t : consumers )
+            t.join();
+    } );
 
-    double thr = (double)totalItems / seconds;
+    double thr = ( double )totalItems / seconds;
     Result r{ "CQ_BulkEnqDeq", seconds, thr };
-    PrintResult(r, totalItems);
+    PrintResult( r, totalItems );
     return r;
 }
 
 // 4. ProducerToken + 单元素 Enq / TryDequeueFromProducer
-Result TestCQ_ProdToken_EnqDeq(const BenchmarkConfig& cfg) {
+Result TestCQ_ProdToken_EnqDeq( const BenchmarkConfig& cfg ) {
     hakle::ConcurrentQueue<int> queue;
-    const std::size_t totalItems = cfg.prodThreads * cfg.itemsPerProd;
+    const std::size_t           totalItems = cfg.prodThreads * cfg.itemsPerProd;
 
     std::vector<hakle::ConcurrentQueue<int>::ProducerToken> prodTokens;
-    prodTokens.reserve(cfg.prodThreads);
-    for (std::size_t i = 0; i < cfg.prodThreads; ++i) {
-        prodTokens.emplace_back(queue.GetProducerToken());
+    prodTokens.reserve( cfg.prodThreads );
+    for ( std::size_t i = 0; i < cfg.prodThreads; ++i ) {
+        prodTokens.emplace_back( queue.GetProducerToken() );
     }
 
-    std::atomic<std::size_t> produced{0};
-    std::atomic<std::size_t> consumed{0};
-    std::atomic<std::size_t> nextProducerForConsumer{0};
+    std::atomic<std::size_t> produced{ 0 };
+    std::atomic<std::size_t> consumed{ 0 };
+    std::atomic<std::size_t> nextProducerForConsumer{ 0 };
 
-    double seconds = MeasureSeconds([&] {
+    double seconds = MeasureSeconds( [ & ] {
         std::vector<std::thread> producers, consumers;
 
         // producers
-        for (std::size_t p = 0; p < cfg.prodThreads; ++p) {
-            producers.emplace_back([&, p] {
-                auto& token = prodTokens[p];
-                for (std::size_t i = 0; i < cfg.itemsPerProd; ++i) {
-                    int v = static_cast<int>(p * cfg.itemsPerProd + i);
-                    queue.EnqueueWithToken(token, v);
-                    produced.fetch_add(1, std::memory_order_relaxed);
+        for ( std::size_t p = 0; p < cfg.prodThreads; ++p ) {
+            producers.emplace_back( [ &, p ] {
+                auto& token = prodTokens[ p ];
+                for ( std::size_t i = 0; i < cfg.itemsPerProd; ++i ) {
+                    int v = static_cast<int>( p * cfg.itemsPerProd + i );
+                    queue.EnqueueWithToken( token, v );
+                    produced.fetch_add( 1, std::memory_order_relaxed );
                 }
-            });
+            } );
         }
 
         // consumers：轮询不同 producer token
-        for (std::size_t c = 0; c < cfg.consThreads; ++c) {
-            consumers.emplace_back([&] {
+        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+            consumers.emplace_back( [ & ] {
                 int value;
-                while (consumed.load(std::memory_order_relaxed) < totalItems) {
-                    std::size_t idx =
-                        nextProducerForConsumer.fetch_add(1, std::memory_order_relaxed)
-                        % cfg.prodThreads;
-                    if (queue.TryDequeueFromProducer(prodTokens[idx], value)) {
-                        consumed.fetch_add(1, std::memory_order_relaxed);
+                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+                    std::size_t idx = nextProducerForConsumer.fetch_add( 1, std::memory_order_relaxed ) % cfg.prodThreads;
+                    if ( queue.TryDequeueFromProducer( prodTokens[ idx ], value ) ) {
+                        consumed.fetch_add( 1, std::memory_order_relaxed );
                     }
                 }
-            });
+            } );
         }
 
-        for (auto& t : producers) t.join();
-        for (auto& t : consumers) t.join();
-    });
+        for ( auto& t : producers )
+            t.join();
+        for ( auto& t : consumers )
+            t.join();
+    } );
 
-    double thr = (double)totalItems / seconds;
+    double thr = ( double )totalItems / seconds;
     Result r{ "CQ_ProdToken_EnqDeq", seconds, thr };
-    PrintResult(r, totalItems);
+    PrintResult( r, totalItems );
     return r;
 }
 
 // 5. ProducerToken + Bulk Enq / TryDequeueBulkFromProducer
-Result TestCQ_ProdToken_BulkEnqDeq(const BenchmarkConfig& cfg) {
+Result TestCQ_ProdToken_BulkEnqDeq( const BenchmarkConfig& cfg ) {
     constexpr std::size_t BULK = 256;
 
     hakle::ConcurrentQueue<int> queue;
-    const std::size_t totalItems = cfg.prodThreads * cfg.itemsPerProd;
+    const std::size_t           totalItems = cfg.prodThreads * cfg.itemsPerProd;
 
     std::vector<hakle::ConcurrentQueue<int>::ProducerToken> prodTokens;
-    prodTokens.reserve(cfg.prodThreads);
-    for (std::size_t i = 0; i < cfg.prodThreads; ++i) {
-        prodTokens.emplace_back(queue.GetProducerToken());
+    prodTokens.reserve( cfg.prodThreads );
+    for ( std::size_t i = 0; i < cfg.prodThreads; ++i ) {
+        prodTokens.emplace_back( queue.GetProducerToken() );
     }
 
-    std::atomic<std::size_t> produced{0};
-    std::atomic<std::size_t> consumed{0};
-    std::atomic<std::size_t> nextProducerForConsumer{0};
+    std::atomic<std::size_t> produced{ 0 };
+    std::atomic<std::size_t> consumed{ 0 };
+    std::atomic<std::size_t> nextProducerForConsumer{ 0 };
 
-    double seconds = MeasureSeconds([&] {
+    double seconds = MeasureSeconds( [ & ] {
         std::vector<std::thread> producers, consumers;
 
         // producers
-        for (std::size_t p = 0; p < cfg.prodThreads; ++p) {
-            producers.emplace_back([&, p] {
-                auto& token = prodTokens[p];
-                std::vector<int> buf(BULK);
-                std::size_t sent = 0;
-                while (sent < cfg.itemsPerProd) {
-                    std::size_t n = std::min(BULK, cfg.itemsPerProd - sent);
-                    for (std::size_t i = 0; i < n; ++i) {
-                        buf[i] = static_cast<int>(p * cfg.itemsPerProd + sent + i);
+        for ( std::size_t p = 0; p < cfg.prodThreads; ++p ) {
+            producers.emplace_back( [ &, p ] {
+                auto&            token = prodTokens[ p ];
+                std::vector<int> buf( BULK );
+                std::size_t      sent = 0;
+                while ( sent < cfg.itemsPerProd ) {
+                    std::size_t n = std::min( BULK, cfg.itemsPerProd - sent );
+                    for ( std::size_t i = 0; i < n; ++i ) {
+                        buf[ i ] = static_cast<int>( p * cfg.itemsPerProd + sent + i );
                     }
-                    queue.EnqueueBulk(token, buf.data(), n);
-                    produced.fetch_add(n, std::memory_order_relaxed);
+                    queue.EnqueueBulk( token, buf.data(), n );
+                    produced.fetch_add( n, std::memory_order_relaxed );
                     sent += n;
                 }
-            });
+            } );
         }
 
         // consumers
-        for (std::size_t c = 0; c < cfg.consThreads; ++c) {
-            consumers.emplace_back([&] {
-                std::vector<int> buf(BULK);
-                while (consumed.load(std::memory_order_relaxed) < totalItems) {
-                    std::size_t idx =
-                        nextProducerForConsumer.fetch_add(1, std::memory_order_relaxed)
-                        % cfg.prodThreads;
-                    std::size_t got =
-                        queue.TryDequeueBulkFromProducer(prodTokens[idx],
-                                                         buf.data(), BULK);
-                    if (got > 0) {
-                        consumed.fetch_add(got, std::memory_order_relaxed);
+        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+            consumers.emplace_back( [ & ] {
+                std::vector<int> buf( BULK );
+                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+                    std::size_t idx = nextProducerForConsumer.fetch_add( 1, std::memory_order_relaxed ) % cfg.prodThreads;
+                    std::size_t got = queue.TryDequeueBulkFromProducer( prodTokens[ idx ], buf.data(), BULK );
+                    if ( got > 0 ) {
+                        consumed.fetch_add( got, std::memory_order_relaxed );
                     }
                 }
-            });
+            } );
         }
 
-        for (auto& t : producers) t.join();
-        for (auto& t : consumers) t.join();
-    });
+        for ( auto& t : producers )
+            t.join();
+        for ( auto& t : consumers )
+            t.join();
+    } );
 
-    double thr = (double)totalItems / seconds;
+    double thr = ( double )totalItems / seconds;
     Result r{ "CQ_ProdToken_BulkEnqDeq", seconds, thr };
-    PrintResult(r, totalItems);
+    PrintResult( r, totalItems );
     return r;
 }
 
 // 6. ProducerToken Enq / ConsumerToken Deq（单元素）
-Result TestCQ_ProdTokenEnq_ConsTokenDeq(const BenchmarkConfig& cfg) {
+Result TestCQ_ProdTokenEnq_ConsTokenDeq( const BenchmarkConfig& cfg ) {
     hakle::ConcurrentQueue<int> queue;
-    const std::size_t totalItems = cfg.prodThreads * cfg.itemsPerProd;
+    const std::size_t           totalItems = cfg.prodThreads * cfg.itemsPerProd;
 
     std::vector<hakle::ConcurrentQueue<int>::ProducerToken> prodTokens;
-    prodTokens.reserve(cfg.prodThreads);
-    for (std::size_t i = 0; i < cfg.prodThreads; ++i) {
-        prodTokens.emplace_back(queue.GetProducerToken());
+    prodTokens.reserve( cfg.prodThreads );
+    for ( std::size_t i = 0; i < cfg.prodThreads; ++i ) {
+        prodTokens.emplace_back( queue.GetProducerToken() );
     }
 
-    std::atomic<std::size_t> produced{0};
-    std::atomic<std::size_t> consumed{0};
+    std::atomic<std::size_t> produced{ 0 };
+    std::atomic<std::size_t> consumed{ 0 };
 
-    double seconds = MeasureSeconds([&] {
+    double seconds = MeasureSeconds( [ & ] {
         std::vector<std::thread> producers, consumers;
 
-        for (std::size_t p = 0; p < cfg.prodThreads; ++p) {
-            producers.emplace_back([&, p] {
-                auto& token = prodTokens[p];
-                for (std::size_t i = 0; i < cfg.itemsPerProd; ++i) {
-                    int v = static_cast<int>(p * cfg.itemsPerProd + i);
-                    queue.EnqueueWithToken(token, v);
-                    produced.fetch_add(1, std::memory_order_relaxed);
+        for ( std::size_t p = 0; p < cfg.prodThreads; ++p ) {
+            producers.emplace_back( [ &, p ] {
+                auto& token = prodTokens[ p ];
+                for ( std::size_t i = 0; i < cfg.itemsPerProd; ++i ) {
+                    int v = static_cast<int>( p * cfg.itemsPerProd + i );
+                    queue.EnqueueWithToken( token, v );
+                    produced.fetch_add( 1, std::memory_order_relaxed );
                 }
-            });
+            } );
         }
 
-        for (std::size_t c = 0; c < cfg.consThreads; ++c) {
-            consumers.emplace_back([&] {
-                typename hakle::ConcurrentQueue<int>::ConsumerToken token(queue);
-                int value;
-                while (consumed.load(std::memory_order_relaxed) < totalItems) {
-                    if (queue.TryDequeue(token, value)) {
-                        consumed.fetch_add(1, std::memory_order_relaxed);
+        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+            consumers.emplace_back( [ & ] {
+                typename hakle::ConcurrentQueue<int>::ConsumerToken token( queue );
+                int                                                 value;
+                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+                    if ( queue.TryDequeue( token, value ) ) {
+                        consumed.fetch_add( 1, std::memory_order_relaxed );
                     }
                 }
-            });
+            } );
         }
 
-        for (auto& t : producers) t.join();
-        for (auto& t : consumers) t.join();
-    });
+        for ( auto& t : producers )
+            t.join();
+        for ( auto& t : consumers )
+            t.join();
+    } );
 
-    double thr = (double)totalItems / seconds;
+    double thr = ( double )totalItems / seconds;
     Result r{ "CQ_ProdTokenEnq_ConsTokenDeq", seconds, thr };
-    PrintResult(r, totalItems);
+    PrintResult( r, totalItems );
     return r;
 }
 
 // 7. 普通 Enq / ConsumerToken Deq（单元素）
-Result TestCQ_NormalEnq_ConsTokenDeq(const BenchmarkConfig& cfg) {
+Result TestCQ_NormalEnq_ConsTokenDeq( const BenchmarkConfig& cfg ) {
     hakle::ConcurrentQueue<int> queue;
-    const std::size_t totalItems = cfg.prodThreads * cfg.itemsPerProd;
+    const std::size_t           totalItems = cfg.prodThreads * cfg.itemsPerProd;
 
-    std::atomic<std::size_t> produced{0};
-    std::atomic<std::size_t> consumed{0};
+    std::atomic<std::size_t> produced{ 0 };
+    std::atomic<std::size_t> consumed{ 0 };
 
-    double seconds = MeasureSeconds([&] {
+    double seconds = MeasureSeconds( [ & ] {
         std::vector<std::thread> producers, consumers;
 
-        for (std::size_t p = 0; p < cfg.prodThreads; ++p) {
-            producers.emplace_back([&, p] {
-                for (std::size_t i = 0; i < cfg.itemsPerProd; ++i) {
-                    int v = static_cast<int>(p * cfg.itemsPerProd + i);
-                    queue.Enqueue(v);
-                    produced.fetch_add(1, std::memory_order_relaxed);
+        for ( std::size_t p = 0; p < cfg.prodThreads; ++p ) {
+            producers.emplace_back( [ &, p ] {
+                for ( std::size_t i = 0; i < cfg.itemsPerProd; ++i ) {
+                    int v = static_cast<int>( p * cfg.itemsPerProd + i );
+                    queue.Enqueue( v );
+                    produced.fetch_add( 1, std::memory_order_relaxed );
                 }
-            });
+            } );
         }
 
-        for (std::size_t c = 0; c < cfg.consThreads; ++c) {
-            consumers.emplace_back([&] {
-                typename hakle::ConcurrentQueue<int>::ConsumerToken token(queue);
-                int value;
-                while (consumed.load(std::memory_order_relaxed) < totalItems) {
-                    if (queue.TryDequeue(token, value)) {
-                        consumed.fetch_add(1, std::memory_order_relaxed);
+        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+            consumers.emplace_back( [ & ] {
+                typename hakle::ConcurrentQueue<int>::ConsumerToken token( queue );
+                int                                                 value;
+                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+                    if ( queue.TryDequeue( token, value ) ) {
+                        consumed.fetch_add( 1, std::memory_order_relaxed );
                     }
                 }
-            });
+            } );
         }
 
-        for (auto& t : producers) t.join();
-        for (auto& t : consumers) t.join();
-    });
+        for ( auto& t : producers )
+            t.join();
+        for ( auto& t : consumers )
+            t.join();
+    } );
 
-    double thr = (double)totalItems / seconds;
+    double thr = ( double )totalItems / seconds;
     Result r{ "CQ_NormalEnq_ConsTokenDeq", seconds, thr };
-    PrintResult(r, totalItems);
+    PrintResult( r, totalItems );
     return r;
 }
 
 // 8. ProducerToken BulkEnq / ConsumerToken BulkDeq
-Result TestCQ_ProdTokenBulkEnq_ConsTokenBulkDeq(const BenchmarkConfig& cfg) {
+Result TestCQ_ProdTokenBulkEnq_ConsTokenBulkDeq( const BenchmarkConfig& cfg ) {
     constexpr std::size_t BULK = 256;
 
     hakle::ConcurrentQueue<int> queue;
-    const std::size_t totalItems = cfg.prodThreads * cfg.itemsPerProd;
+    const std::size_t           totalItems = cfg.prodThreads * cfg.itemsPerProd;
 
     std::vector<hakle::ConcurrentQueue<int>::ProducerToken> prodTokens;
-    prodTokens.reserve(cfg.prodThreads);
-    for (std::size_t i = 0; i < cfg.prodThreads; ++i) {
-        prodTokens.emplace_back(queue.GetProducerToken());
+    prodTokens.reserve( cfg.prodThreads );
+    for ( std::size_t i = 0; i < cfg.prodThreads; ++i ) {
+        prodTokens.emplace_back( queue.GetProducerToken() );
     }
 
-    std::atomic<std::size_t> produced{0};
-    std::atomic<std::size_t> consumed{0};
+    std::atomic<std::size_t> produced{ 0 };
+    std::atomic<std::size_t> consumed{ 0 };
 
-    double seconds = MeasureSeconds([&] {
+    double seconds = MeasureSeconds( [ & ] {
         std::vector<std::thread> producers, consumers;
 
         // producers
-        for (std::size_t p = 0; p < cfg.prodThreads; ++p) {
-            producers.emplace_back([&, p] {
-                auto& token = prodTokens[p];
-                std::vector<int> buf(BULK);
-                std::size_t sent = 0;
-                while (sent < cfg.itemsPerProd) {
-                    std::size_t n = std::min(BULK, cfg.itemsPerProd - sent);
-                    for (std::size_t i = 0; i < n; ++i) {
-                        buf[i] = static_cast<int>(p * cfg.itemsPerProd + sent + i);
+        for ( std::size_t p = 0; p < cfg.prodThreads; ++p ) {
+            producers.emplace_back( [ &, p ] {
+                auto&            token = prodTokens[ p ];
+                std::vector<int> buf( BULK );
+                std::size_t      sent = 0;
+                while ( sent < cfg.itemsPerProd ) {
+                    std::size_t n = std::min( BULK, cfg.itemsPerProd - sent );
+                    for ( std::size_t i = 0; i < n; ++i ) {
+                        buf[ i ] = static_cast<int>( p * cfg.itemsPerProd + sent + i );
                     }
-                    queue.EnqueueBulk(token, buf.data(), n);
-                    produced.fetch_add(n, std::memory_order_relaxed);
+                    queue.EnqueueBulk( token, buf.data(), n );
+                    produced.fetch_add( n, std::memory_order_relaxed );
                     sent += n;
                 }
-            });
+            } );
         }
 
         // consumers
-        for (std::size_t c = 0; c < cfg.consThreads; ++c) {
-            consumers.emplace_back([&] {
-                typename hakle::ConcurrentQueue<int>::ConsumerToken token(queue);
-                std::vector<int> buf(BULK);
-                while (consumed.load(std::memory_order_relaxed) < totalItems) {
-                    std::size_t got =
-                        queue.TryDequeueBulk(token, buf.data(), BULK);
-                    if (got > 0) {
-                        consumed.fetch_add(got, std::memory_order_relaxed);
+        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+            consumers.emplace_back( [ & ] {
+                typename hakle::ConcurrentQueue<int>::ConsumerToken token( queue );
+                std::vector<int>                                    buf( BULK );
+                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+                    std::size_t got = queue.TryDequeueBulk( token, buf.data(), BULK );
+                    if ( got > 0 ) {
+                        consumed.fetch_add( got, std::memory_order_relaxed );
                     }
                 }
-            });
+            } );
         }
 
-        for (auto& t : producers) t.join();
-        for (auto& t : consumers) t.join();
-    });
+        for ( auto& t : producers )
+            t.join();
+        for ( auto& t : consumers )
+            t.join();
+    } );
 
-    double thr = (double)totalItems / seconds;
+    double thr = ( double )totalItems / seconds;
     Result r{ "CQ_ProdTokenBulkEnq_ConsTokenBulkDeq", seconds, thr };
-    PrintResult(r, totalItems);
+    PrintResult( r, totalItems );
     return r;
 }
 
 // 9. 普通 BulkEnq / ConsumerToken BulkDeq
-Result TestCQ_NormalBulkEnq_ConsTokenBulkDeq(const BenchmarkConfig& cfg) {
+Result TestCQ_NormalBulkEnq_ConsTokenBulkDeq( const BenchmarkConfig& cfg ) {
     constexpr std::size_t BULK = 256;
 
     hakle::ConcurrentQueue<int> queue;
-    const std::size_t totalItems = cfg.prodThreads * cfg.itemsPerProd;
+    const std::size_t           totalItems = cfg.prodThreads * cfg.itemsPerProd;
 
-    std::atomic<std::size_t> produced{0};
-    std::atomic<std::size_t> consumed{0};
+    std::atomic<std::size_t> produced{ 0 };
+    std::atomic<std::size_t> consumed{ 0 };
 
-    double seconds = MeasureSeconds([&] {
+    double seconds = MeasureSeconds( [ & ] {
         std::vector<std::thread> producers, consumers;
 
         // producers
-        for (std::size_t p = 0; p < cfg.prodThreads; ++p) {
-            producers.emplace_back([&, p] {
-                std::vector<int> buf(BULK);
-                std::size_t sent = 0;
-                while (sent < cfg.itemsPerProd) {
-                    std::size_t n = std::min(BULK, cfg.itemsPerProd - sent);
-                    for (std::size_t i = 0; i < n; ++i) {
-                        buf[i] = static_cast<int>(p * cfg.itemsPerProd + sent + i);
+        for ( std::size_t p = 0; p < cfg.prodThreads; ++p ) {
+            producers.emplace_back( [ &, p ] {
+                std::vector<int> buf( BULK );
+                std::size_t      sent = 0;
+                while ( sent < cfg.itemsPerProd ) {
+                    std::size_t n = std::min( BULK, cfg.itemsPerProd - sent );
+                    for ( std::size_t i = 0; i < n; ++i ) {
+                        buf[ i ] = static_cast<int>( p * cfg.itemsPerProd + sent + i );
                     }
-                    queue.EnqueueBulk(buf.data(), n);
-                    produced.fetch_add(n, std::memory_order_relaxed);
+                    queue.EnqueueBulk( buf.data(), n );
+                    produced.fetch_add( n, std::memory_order_relaxed );
                     sent += n;
                 }
-            });
+            } );
         }
 
         // consumers
-        for (std::size_t c = 0; c < cfg.consThreads; ++c) {
-            consumers.emplace_back([&] {
-                typename hakle::ConcurrentQueue<int>::ConsumerToken token(queue);
-                std::vector<int> buf(BULK);
-                while (consumed.load(std::memory_order_relaxed) < totalItems) {
-                    std::size_t got =
-                        queue.TryDequeueBulk(token, buf.data(), BULK);
-                    if (got > 0) {
-                        consumed.fetch_add(got, std::memory_order_relaxed);
+        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+            consumers.emplace_back( [ & ] {
+                typename hakle::ConcurrentQueue<int>::ConsumerToken token( queue );
+                std::vector<int>                                    buf( BULK );
+                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+                    std::size_t got = queue.TryDequeueBulk( token, buf.data(), BULK );
+                    if ( got > 0 ) {
+                        consumed.fetch_add( got, std::memory_order_relaxed );
                     }
                 }
-            });
+            } );
         }
 
-        for (auto& t : producers) t.join();
-        for (auto& t : consumers) t.join();
-    });
+        for ( auto& t : producers )
+            t.join();
+        for ( auto& t : consumers )
+            t.join();
+    } );
 
-    double thr = (double)totalItems / seconds;
+    double thr = ( double )totalItems / seconds;
     Result r{ "CQ_NormalBulkEnq_ConsTokenBulkDeq", seconds, thr };
-    PrintResult(r, totalItems);
+    PrintResult( r, totalItems );
     return r;
 }
 
@@ -558,16 +571,16 @@ Result TestCQ_MOODY_NormalEnqDeq( const BenchmarkConfig& cfg ) {
             } );
         }
 
-        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
-            consumers.emplace_back( [ & ] {
-                int value;
-                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
-                    if ( queue.try_dequeue( value ) ) {
-                        consumed.fetch_add( 1, std::memory_order_relaxed );
-                    }
-                }
-            } );
-        }
+        // for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+        //     consumers.emplace_back( [ & ] {
+        //         int value;
+        //         while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+        //             if ( queue.try_dequeue( value ) ) {
+        //                 consumed.fetch_add( 1, std::memory_order_relaxed );
+        //             }
+        //         }
+        //     } );
+        // }
 
         for ( auto& t : producers )
             t.join();
@@ -604,7 +617,10 @@ Result TestCQ_MOODY_BulkEnqDeq( const BenchmarkConfig& cfg ) {
                     for ( std::size_t i = 0; i < n; ++i ) {
                         buf[ i ] = static_cast<int>( p * cfg.itemsPerProd + sent + i );
                     }
-                    queue.enqueue_bulk( buf.data(), n );
+                    if ( !queue.enqueue_bulk( buf.data(), n ) ) {
+                        exit( 0 );
+                        // printf( "wetd" );
+                    }
                     produced.fetch_add( n, std::memory_order_relaxed );
                     sent += n;
                 }
@@ -612,17 +628,17 @@ Result TestCQ_MOODY_BulkEnqDeq( const BenchmarkConfig& cfg ) {
         }
 
         // consumers
-        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
-            consumers.emplace_back( [ & ] {
-                std::vector<int> buf( BULK );
-                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
-                    std::size_t got = queue.try_dequeue_bulk( buf.data(), BULK );
-                    if ( got > 0 ) {
-                        consumed.fetch_add( got, std::memory_order_relaxed );
-                    }
-                }
-            } );
-        }
+        // for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
+        //     consumers.emplace_back( [ & ] {
+        //         std::vector<int> buf( BULK );
+        //         while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
+        //             std::size_t got = queue.try_dequeue_bulk( buf.data(), BULK );
+        //             if ( got > 0 ) {
+        //                 consumed.fetch_add( got, std::memory_order_relaxed );
+        //             }
+        //         }
+        //     } );
+        // }
 
         for ( auto& t : producers )
             t.join();
@@ -971,59 +987,6 @@ Result TestCQ_MOODY_NormalBulkEnq_ConsTokenBulkDeq( const BenchmarkConfig& cfg )
     return r;
 }
 
-// 10. boost::lockfree::queue
-Result TestBoostLockfreeQueue( const BenchmarkConfig& cfg ) {
-    // 预留一个容量，避免 push 失败（boost::lockfree 默认是有容量限制的）
-    const std::size_t capacity   = cfg.prodThreads * cfg.itemsPerProd;
-    const std::size_t totalItems = capacity;
-
-    boost::lockfree::queue<int> q( capacity );
-
-    std::atomic<std::size_t> produced{ 0 };
-    std::atomic<std::size_t> consumed{ 0 };
-
-    double seconds = MeasureSeconds( [ & ] {
-        std::vector<std::thread> producers, consumers;
-
-        // producers
-        for ( std::size_t p = 0; p < cfg.prodThreads; ++p ) {
-            producers.emplace_back( [ &, p ] {
-                for ( std::size_t i = 0; i < cfg.itemsPerProd; ++i ) {
-                    int v = static_cast<int>( p * cfg.itemsPerProd + i );
-                    // boost::lockfree::queue::push 返回 bool，可能失败（满）
-                    // 简单做法：自旋直到成功
-                    while ( !q.push( v ) ) {
-                        // 可选：std::this_thread::yield();
-                    }
-                    produced.fetch_add( 1, std::memory_order_relaxed );
-                }
-            } );
-        }
-
-        // consumers
-        for ( std::size_t c = 0; c < cfg.consThreads; ++c ) {
-            consumers.emplace_back( [ & ] {
-                int value;
-                while ( consumed.load( std::memory_order_relaxed ) < totalItems ) {
-                    if ( q.pop( value ) ) {
-                        consumed.fetch_add( 1, std::memory_order_relaxed );
-                    }
-                }
-            } );
-        }
-
-        for ( auto& t : producers )
-            t.join();
-        for ( auto& t : consumers )
-            t.join();
-    } );
-
-    double thr = ( double )totalItems / seconds;
-    Result r{ "BoostLockfreeQueue", seconds, thr };
-    PrintResult( r, totalItems );
-    return r;
-}
-
 // 打印“排行榜”和 ASCII 柱状图
 void PrintRanking( const std::vector<Result>& results ) {
     if ( results.empty() )
@@ -1047,9 +1010,9 @@ void PrintRanking( const std::vector<Result>& results ) {
 
 int main() {
     BenchmarkConfig cfg;
-    cfg.prodThreads  = 4;
-    cfg.consThreads  = 4;
-    cfg.itemsPerProd = 200000;
+    cfg.prodThreads  = 20;
+    cfg.consThreads  = 20;
+    cfg.itemsPerProd = 800000;
 
     const std::size_t totalItems = cfg.prodThreads * cfg.itemsPerProd;
 
@@ -1058,25 +1021,25 @@ int main() {
     std::vector<Result> results;
     results.reserve( 10 );
 
-    results.push_back( TestMutexQueue( cfg ) );
-    results.push_back( TestBoostLockfreeQueue( cfg ) );  // 新增这一行
+#ifdef USE_MY
+    results.push_back( TestCQ_NormalEnqDeq( cfg ) );
+    results.push_back( TestCQ_BulkEnqDeq( cfg ) );
+    // results.push_back( TestCQ_ProdToken_EnqDeq( cfg ) );
+    // results.push_back( TestCQ_ProdToken_BulkEnqDeq( cfg ) );
+    // results.push_back( TestCQ_ProdTokenEnq_ConsTokenDeq( cfg ) );
+    // results.push_back( TestCQ_NormalEnq_ConsTokenDeq( cfg ) );
+    // results.push_back( TestCQ_ProdTokenBulkEnq_ConsTokenBulkDeq( cfg ) );
+    // results.push_back( TestCQ_NormalBulkEnq_ConsTokenBulkDeq( cfg ) );
+#endif
+
+    // results.push_back( TestMutexQueue( cfg ) );
     results.push_back( TestCQ_MOODY_NormalEnqDeq( cfg ) );
     results.push_back( TestCQ_MOODY_BulkEnqDeq( cfg ) );
-    results.push_back( TestCQ_MOODY_ProdToken_EnqDeq( cfg ) );
-    results.push_back( TestCQ_MOODY_ProdToken_BulkEnqDeq( cfg ) );
-    results.push_back( TestCQ_MOODY_ProdTokenEnq_ConsTokenDeq( cfg ) );
-    results.push_back( TestCQ_MOODY_NormalEnq_ConsTokenDeq( cfg ) );
-    results.push_back( TestCQ_MOODY_ProdTokenBulkEnq_ConsTokenBulkDeq( cfg ) );
-    results.push_back( TestCQ_MOODY_NormalBulkEnq_ConsTokenBulkDeq( cfg ) );
-#if USE_MY
-    results.push_back(TestCQ_NormalEnqDeq(cfg));
-    results.push_back(TestCQ_BulkEnqDeq(cfg));
-    results.push_back(TestCQ_ProdToken_EnqDeq(cfg));
-    results.push_back(TestCQ_ProdToken_BulkEnqDeq(cfg));
-    results.push_back(TestCQ_ProdTokenEnq_ConsTokenDeq(cfg));
-    results.push_back(TestCQ_NormalEnq_ConsTokenDeq(cfg));
-    results.push_back(TestCQ_ProdTokenBulkEnq_ConsTokenBulkDeq(cfg));
-    results.push_back(TestCQ_NormalBulkEnq_ConsTokenBulkDeq(cfg));
-#endif
+    // results.push_back( TestCQ_MOODY_ProdToken_EnqDeq( cfg ) );
+    // results.push_back( TestCQ_MOODY_ProdToken_BulkEnqDeq( cfg ) );
+    // results.push_back( TestCQ_MOODY_ProdTokenEnq_ConsTokenDeq( cfg ) );
+    // results.push_back( TestCQ_MOODY_NormalEnq_ConsTokenDeq( cfg ) );
+    // results.push_back( TestCQ_MOODY_ProdTokenBulkEnq_ConsTokenBulkDeq( cfg ) );
+    // results.push_back( TestCQ_MOODY_NormalBulkEnq_ConsTokenBulkDeq( cfg ) );
     PrintRanking( results );
 }
