@@ -55,6 +55,8 @@ CTestTestfile.cmake
 
 # thirdparty
 thirdparty/
+_deps
+
 
 log.*
 

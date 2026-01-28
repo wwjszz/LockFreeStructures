@@ -379,7 +379,7 @@ public:
         BlockType*  CurrentBlock    = ( StartInnerIndex == 0 && FirstAllocatedBlock != nullptr ) ? FirstAllocatedBlock : StartBlock;
         while ( true ) {
             std::size_t EndInnerIndex = ( CurrentBlock == this->TailBlock() ) ? ( StartTailIndex + Count - 1 ) & ( BlockSize - 1 ) : ( BlockSize - 1 );
-            HAKLE_CONSTEXPR_IF( std::is_nothrow_constructible<ValueType, typename std::iterator_traits<Iterator>::value_type>::value ) {
+            HAKLE_CONSTEXPR_IF( std::is_nothrow_constructible<ValueType, typename std::iterator_traits<Iterator>::value_type&>::value ) {
                 while ( StartInnerIndex <= EndInnerIndex ) {
                     ValueAllocatorTraits::Construct( this->ValueAllocator(), ( *CurrentBlock )[ StartInnerIndex ], *ItemFirst++ );
                     ++StartInnerIndex;
@@ -474,7 +474,7 @@ public:
                 BlockType*  DequeueBlock        = LocalIndexEntryArray->Entries[ ( LocalIndexEntryIndex + Offset ) & ( LocalIndexEntryArray->Size - 1 ) ].InnerBlock;
                 ValueType&  Value               = *( *DequeueBlock )[ InnerIndex ];
 
-                HAKLE_CONSTEXPR_IF( !std::is_nothrow_assignable<U&, ValueType>::value ) {
+                HAKLE_CONSTEXPR_IF( !std::is_nothrow_assignable<U&, ValueType&&>::value ) {
                     struct Guard {
                         BlockType*                                    Block;
                         CompressPair<std::size_t, ValueAllocatorType> ValueAllocatorPair;
@@ -865,11 +865,9 @@ public:
         BlockType*  CurrentBlock    = StartBlock;
         while ( true ) {
             std::size_t EndInnerIndex = ( CurrentBlock == this->TailBlock() ) ? ( OriginTailIndex + Count - 1 ) & ( BlockSize - 1 ) : ( BlockSize - 1 );
-            HAKLE_CONSTEXPR_IF( std::is_nothrow_constructible<ValueType, typename std::iterator_traits<Iterator>::value_type>::value ) {
+            HAKLE_CONSTEXPR_IF( std::is_nothrow_constructible<ValueType, typename std::iterator_traits<Iterator>::value_type&>::value ) {
                 while ( StartInnerIndex <= EndInnerIndex ) {
-                    // new ( ( *CurrentBlock )[ StartInnerIndex++ ] ) ValueType( ( *ItemFirst++ ) );
                     ValueAllocatorTraits::Construct( this->ValueAllocatorPair.Second(), ( *CurrentBlock )[ StartInnerIndex++ ], *ItemFirst++ );
-                    // std::allocator_traits<std::allocator<T>>::construct( alloc, ( *CurrentBlock )[ StartInnerIndex++ ], *ItemFirst++ );
                 }
             }
             else {
@@ -934,7 +932,7 @@ public:
                 BlockType*  Block = Entry->Value.load( std::memory_order_relaxed );
                 ValueType&  Value = *( *Block )[ InnerIndex ];
 
-                HAKLE_CONSTEXPR_IF( !std::is_nothrow_assignable<U, ValueType>::value ) {
+                HAKLE_CONSTEXPR_IF( !std::is_nothrow_assignable<U&, ValueType&&>::value ) {
                     struct Guard {
                         IndexEntry*                                   Entry;
                         BlockType*                                    Block;
@@ -998,7 +996,7 @@ public:
                     BlockType*  DequeueBlock      = DequeueIndexEntry->Value.load( std::memory_order_relaxed );
                     std::size_t EndIndex          = ( NeedCount > ( BlockSize - StartIndex ) ) ? BlockSize : ( NeedCount + StartIndex );
                     std::size_t CurrentIndex      = StartIndex;
-                    HAKLE_CONSTEXPR_IF( std::is_nothrow_assignable<typename std::iterator_traits<Iterator>::value_type, ValueType&&>::value ) {
+                    HAKLE_CONSTEXPR_IF( std::is_nothrow_assignable<typename std::iterator_traits<Iterator>::value_type&, ValueType&&>::value ) {
                         while ( CurrentIndex != EndIndex ) {
                             ValueType& Value = *( *DequeueBlock )[ CurrentIndex ];
                             *ItemFirst       = std::move( Value );
@@ -1806,11 +1804,11 @@ private:
 
     constexpr bool UpdateProducerForConsumer( ConsumerToken& Token ) {
         ProducerListNode* Head = ProducerListsHead.load( std::memory_order_acquire );
-        if ( Token.DesiredProducer == nullptr && ProducerListsHead.load( std::memory_order_acquire ) == nullptr )
+        if ( Token.DesiredProducer == nullptr && Head == nullptr )
             return false;
         std::uint32_t ProducerCount = this->ProducerCount.load( std::memory_order_relaxed );
         std::uint32_t GlobalOffset  = GlobalExplicitConsumerOffset().load( std::memory_order_relaxed );
-        if ( Token.DesiredProducer == nullptr ) {
+        if HAKLE_UNLIKELY ( Token.DesiredProducer == nullptr ) {
             std::uint32_t Offset  = Token.InitialOffset % ProducerCount;
             Token.DesiredProducer = Head;
             for ( std::uint32_t i = 0; i < Offset; ++i ) {
@@ -1821,7 +1819,10 @@ private:
             }
         }
 
-        std::uint32_t Delta = ( GlobalOffset - Token.LastKnownGlobalOffset ) % ProducerCount;
+        std::uint32_t Delta = GlobalOffset - Token.LastKnownGlobalOffset;
+        if ( Delta >= ProducerCount ) {
+            Delta = Delta & ProducerCount;
+        }
         for ( std::uint32_t i = 0; i < Delta; ++i ) {
             Token.DesiredProducer = Token.DesiredProducer->Next;
             if ( Token.DesiredProducer == nullptr ) {

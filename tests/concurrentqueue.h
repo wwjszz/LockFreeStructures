@@ -449,7 +449,7 @@ struct ConcurrentQueueDefaultTraits {
     // arguments) will be recycled, and all others will be `free`d back to the heap.
     // Note that blocks consumed by explicit producers are only freed on destruction
     // of the queue (not following destruction of the token) regardless of this trait.
-    static const bool RECYCLE_ALLOCATED_BLOCKS = false;
+    static const bool RECYCLE_ALLOCATED_BLOCKS = true;
 
 #ifndef MCDBGQ_USE_RELACY
     // Memory allocation can be customized if needed.

@@ -25,18 +25,23 @@ endif()
 
 include(FetchContent)
 
-# Set the download directory to the project's source thirdparty/googletest
-# (Alternatively, use ${CMAKE_BINARY_DIR}/thirdparty to keep thirdparty in the build tree)
-set(FETCHCONTENT_BASE_DIR ${CMAKE_SOURCE_DIR}/thirdparty/googletest)
-
+# googletest
 FetchContent_Declare(
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG        v1.14.0  # fixed version
+        GIT_TAG        v1.14.0
+        SOURCE_DIR     ${CMAKE_SOURCE_DIR}/thirdparty/googletest
 )
 
-# This will download at configure time and add_subdirectory(...), creating gtest/gmock targets
-FetchContent_MakeAvailable(googletest)
+# benchmark
+FetchContent_Declare(
+        benchmark
+        GIT_REPOSITORY https://github.com/google/benchmark.git
+        GIT_TAG        v1.8.3
+        SOURCE_DIR     ${CMAKE_SOURCE_DIR}/thirdparty/benchmark
+)
+
+FetchContent_MakeAvailable(googletest benchmark)
 
 # ============================================================================
 # Compiler Options
@@ -127,10 +132,38 @@ target_link_libraries(other_test PRIVATE gtest_main)
 add_executable(concurrentqueuetest_benchmarks tests/concurrentqueuetest_benchmarks.cpp)
 target_link_libraries(concurrentqueuetest_benchmarks PRIVATE gtest_main)
 
+target_compile_definitions(concurrentqueuetest_benchmarks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
+
 add_executable(concurrentqueuetest_check tests/concurrentqueuetest_check.cpp)
 target_link_libraries(concurrentqueuetest_check PRIVATE gtest_main)
 
 target_compile_definitions(concurrentqueuetest_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
+
+add_executable(concurrentqueuetest_obj_check tests/cq_obj_check.cpp)
+target_link_libraries(concurrentqueuetest_obj_check PRIVATE gtest_main)
+
+target_compile_definitions(concurrentqueuetest_obj_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
+
+add_executable(concurrentqueuetest_exception_obj_check tests/cq_exception_obj_check.cpp)
+target_link_libraries(concurrentqueuetest_exception_obj_check PRIVATE gtest_main)
+
+target_compile_definitions(concurrentqueuetest_exception_obj_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
+
+add_executable(int_bench tests/main_bench.cpp)
+
+target_link_libraries(int_bench
+        PRIVATE
+        benchmark::benchmark       # 主库
+        benchmark::benchmark_main  # 提供 main()
+)
+
+add_executable(obj_bench tests/obj_main_bench.cpp)
+
+target_link_libraries(obj_bench
+        PRIVATE
+        benchmark::benchmark       # 主库
+        benchmark::benchmark_main  # 提供 main()
+)
 
 add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
 add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)
