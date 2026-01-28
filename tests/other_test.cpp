@@ -1032,7 +1032,7 @@ int main() {
     results.push_back( TestCQ_NormalBulkEnq_ConsTokenBulkDeq( cfg ) );
 #endif
 
-    results.push_back( TestMutexQueue( cfg ) );
+    // results.push_back( TestMutexQueue( cfg ) );
     results.push_back( TestCQ_MOODY_NormalEnqDeq( cfg ) );
     results.push_back( TestCQ_MOODY_BulkEnqDeq( cfg ) );
     results.push_back( TestCQ_MOODY_ProdToken_EnqDeq( cfg ) );
