@@ -9,6 +9,7 @@
 #include <memory>
 #include <new>
 #include <type_traits>
+#include <tuple>
 #include <utility>
 
 namespace {
@@ -165,6 +166,18 @@ template <typename T, typename Allocator> struct counting_queue_traits {
     return ImplicitBlockManagerType(InitialBlockPoolSize, allocator);
   }
 };
+
+using default_counting_allocator = counting_allocator<int>;
+using default_counting_traits =
+    hakle::ConcurrentQueueDefaultTraits<int, default_counting_allocator>;
+
+static_assert(std::is_same_v<
+              typename default_counting_traits::ExplicitBlockManagerType::AllocatorType,
+              typename default_counting_traits::ExplicitAllocatorType>);
+static_assert(std::is_same_v<
+              typename default_counting_traits::ImplicitBlockManagerType::AllocatorType,
+              typename default_counting_traits::ImplicitAllocatorType>);
+
 struct lifetime_probe {
   static inline std::atomic<int> alive{0};
   static inline std::atomic<int> constructed{0};
@@ -311,6 +324,97 @@ void test_custom_allocator_is_used_and_balanced() {
         counters->destructions.load(std::memory_order_relaxed));
 }
 
+void test_default_traits_propagate_custom_allocator() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  {
+    using allocator_type = counting_allocator<int>;
+    allocator_type allocator(counters);
+    hakle::ConcurrentQueue<int, allocator_type> queue(allocator);
+
+    CHECK(queue.Enqueue(41));
+    {
+      auto producer = queue.GetProducerToken();
+      CHECK(queue.EnqueueWithToken(producer, 42));
+    }
+
+    int first = 0;
+    int second = 0;
+    CHECK(queue.TryDequeue(first));
+    CHECK(queue.TryDequeue(second));
+    CHECK(first + second == 83);
+    CHECK(counters->allocation_calls.load(std::memory_order_relaxed) != 0);
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+  CHECK(counters->constructions.load(std::memory_order_relaxed) ==
+        counters->destructions.load(std::memory_order_relaxed));
+}
+
+void test_piecewise_block_manager_sizes_with_custom_allocator() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  {
+    using allocator_type = counting_allocator<int>;
+    using queue_type = hakle::ConcurrentQueue<int, allocator_type>;
+    allocator_type allocator(counters);
+    queue_type queue(std::piecewise_construct, std::make_tuple(std::size_t{8}),
+                     std::make_tuple(std::size_t{8}), allocator);
+
+    CHECK(queue.Enqueue(51));
+    auto producer = queue.GetProducerToken();
+    CHECK(queue.EnqueueWithToken(producer, 52));
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+}
+
+void test_custom_allocator_move_assignment_is_balanced() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  {
+    using allocator_type = counting_allocator<int>;
+    using queue_type = hakle::ConcurrentQueue<int, allocator_type>;
+    allocator_type allocator(counters);
+
+    queue_type target(allocator);
+    for (int value = 0; value != 96; ++value) {
+      CHECK(target.Enqueue(value));
+    }
+    {
+      auto producer = target.GetProducerToken();
+      for (int value = 0; value != 96; ++value) {
+        CHECK(target.EnqueueWithToken(producer, 1000 + value));
+      }
+    }
+
+    queue_type source(allocator);
+    CHECK(source.Enqueue(91));
+    CHECK(source.Enqueue(92));
+
+    target = std::move(source);
+
+    int first = 0;
+    int second = 0;
+    CHECK(target.TryDequeue(first));
+    CHECK(target.TryDequeue(second));
+    CHECK(first + second == 183);
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+  CHECK(counters->constructions.load(std::memory_order_relaxed) ==
+        counters->destructions.load(std::memory_order_relaxed));
+}
+
 } // namespace
 
 int main() {
@@ -318,5 +422,11 @@ int main() {
   runner.run("non-trivial value lifetime", test_non_trivial_value_lifetime);
   runner.run("enqueue constructor exception", test_enqueue_constructor_exception_keeps_queue_usable);
   runner.run("custom allocator usage and balance", test_custom_allocator_is_used_and_balanced);
+  runner.run("default traits propagate custom allocator",
+             test_default_traits_propagate_custom_allocator);
+  runner.run("piecewise block manager sizes with custom allocator",
+             test_piecewise_block_manager_sizes_with_custom_allocator);
+  runner.run("custom allocator move assignment balance",
+             test_custom_allocator_move_assignment_is_balanced);
   return runner.finish("allocator and lifetime");
 }

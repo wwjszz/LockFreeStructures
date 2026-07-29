@@ -133,6 +133,40 @@ void test_move_construction_and_swap_preserve_contents() {
 
 }
 
+void test_move_assignment_releases_existing_contents() {
+  queue_type target;
+  for (int value = 0; value != 96; ++value) {
+    CHECK(target.Enqueue(value));
+  }
+  {
+    auto producer = target.GetProducerToken();
+    for (int value = 0; value != 96; ++value) {
+      CHECK(target.EnqueueWithToken(producer, 1000 + value));
+    }
+  }
+
+  queue_type source;
+  CHECK(source.Enqueue(7001));
+  CHECK(source.Enqueue(7002));
+  CHECK(source.Enqueue(7003));
+
+  target = std::move(source);
+
+  CHECK(source.Size() == 0);
+  CHECK(target.Size() == 3);
+
+  target = std::move(target);
+  CHECK(target.Size() == 3);
+
+  int value = 0;
+  CHECK(target.TryDequeue(value));
+  CHECK(value == 7001);
+  CHECK(target.TryDequeue(value));
+  CHECK(value == 7002);
+  CHECK(target.TryDequeue(value));
+  CHECK(value == 7003);
+  CHECK(!target.TryDequeue(value));
+}
 } // namespace
 
 int main() {
@@ -144,5 +178,7 @@ int main() {
   runner.run("token bulk enqueue and dequeue", test_bulk_operations_with_producer_token);
   runner.run("move-only values", test_move_only_values);
   runner.run("move construction and swap", test_move_construction_and_swap_preserve_contents);
+  runner.run("move assignment releases existing contents",
+             test_move_assignment_releases_existing_contents);
   return runner.finish("queue API");
 }

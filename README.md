@@ -4,7 +4,8 @@
 `hakle::ConcurrentQueue<T>`：它参考 moodycamel::ConcurrentQueue 的分生产者队列设计，在其上重新组织了
 队列封装、Block/BlockManager、HashTable 和可替换 allocator/traits。
 
-本轮工程化重构只调整构建、测试、benchmark、文档和许可声明，不改队列实现源码。
+本轮工程化重构调整了构建、测试、benchmark、文档和许可声明，并修复 move assignment 的资源释放顺序及
+默认 traits 的 allocator 传播。
 
 ## 主要能力
 
@@ -65,9 +66,9 @@ ctest --test-dir build -C Debug --output-on-failure
 测试结构与 `co_mira` 一致：`test/test_*.cc` 中每个文件生成一个独立可执行文件，由轻量 `CHECK`
 测试框架输出 `[PASS]` / `[FAIL]`，再注册到 CTest。默认套件包含：
 
-- 基础 API、implicit/explicit token、bulk、move-only、move construction 和 swap；
+- 基础 API、implicit/explicit token、bulk、move-only、move construction、move assignment 和 swap；
 - implicit/token/bulk MPMC，逐值去重校验及逐 producer FIFO；
-- 非平凡对象生命周期、构造异常恢复、自定义 allocator 分配/构造平衡。
+- 非平凡对象生命周期、构造异常恢复、默认/自定义 traits 的 allocator 分配与构造平衡。
 
 ## Benchmark
 
@@ -138,8 +139,8 @@ allocator 不是 `std::allocator_traits` 接口，而是项目自己的 `HakeAll
 `ValueType`、指针/引用/size 类型、`Allocate`、`Deallocate`、`Construct`、`Destroy`，并支持 rebind。
 完整示例见 `test/test_allocator_and_lifetime.cc`。
 
-当前默认 BlockManager aliases 没有把自定义 allocator 类型继续传给 block manager；若要验证完整的 allocator
-传播，需要像测试示例一样提供自定义 queue traits。详见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
+默认 queue traits 会把重绑定后的 allocator 继续传给 explicit/implicit block manager，因此 block pool 和
+free list 也使用同一 allocator 体系。自定义 block 或 manager 时仍可提供自定义 queue traits。
 
 ## 许可
 

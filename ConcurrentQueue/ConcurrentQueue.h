@@ -1342,8 +1342,8 @@ struct ConcurrentQueueDefaultTraits {
     static ExplicitBlockManagerType MakeDefaultExplicitBlockManager( const ExplicitAllocatorType& InAllocator ) { return ExplicitBlockManagerType( InitialBlockPoolSize, InAllocator ); }
     static ImplicitBlockManagerType MakeDefaultImplicitBlockManager( const ImplicitAllocatorType& InAllocator ) { return ImplicitBlockManagerType( InitialBlockPoolSize, InAllocator ); }
 
-    static ImplicitBlockManagerType MakeExplicitBlockManager( const ExplicitAllocatorType& InAllocator, std::size_t BlockPoolSize ) { return ImplicitBlockManagerType( BlockPoolSize, InAllocator ); }
-    static ImplicitBlockManagerType MakeImplicitBlockManager( const ExplicitAllocatorType& InAllocator, std::size_t BlockPoolSize ) { return ImplicitBlockManagerType( BlockPoolSize, InAllocator ); }
+    static ExplicitBlockManagerType MakeExplicitBlockManager( const ExplicitAllocatorType& InAllocator, std::size_t BlockPoolSize ) { return ExplicitBlockManagerType( BlockPoolSize, InAllocator ); }
+    static ImplicitBlockManagerType MakeImplicitBlockManager( const ImplicitAllocatorType& InAllocator, std::size_t BlockPoolSize ) { return ImplicitBlockManagerType( BlockPoolSize, InAllocator ); }
 };
 
 template <class T, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsConcurrentQueueTraits ) Traits = ConcurrentQueueDefaultTraits<T, Allocator>>
@@ -1393,18 +1393,18 @@ public:
           ImplicitProducerAllocatorPair( MakeDefaultImplicitBlockManager( ImplicitAllocatorType( InAllocator ) ), ImplicitProducerAllocatorType( InAllocator ) ) {}
 
     template <class... Args1, class... Args2>
-    HAKLE_REQUIRES( HasMakeImplicitBlockManager<Traits>&& HasMakeExplicitBlockManager<Traits>&& std::invocable<decltype( Traits::MakeExplicitBlockManager ), Args1&&...>&& std::invocable<decltype( Traits::MakeImplicitBlockManager ), Args2&&...> )
+    HAKLE_REQUIRES( HasMakeImplicitBlockManager<Traits>&& HasMakeExplicitBlockManager<Traits>&& std::invocable<decltype( Traits::MakeExplicitBlockManager ), const ExplicitAllocatorType&, Args1&&...>&& std::invocable<decltype( Traits::MakeImplicitBlockManager ), const ImplicitAllocatorType&, Args2&&...> )
     explicit constexpr ConcurrentQueue( std::piecewise_construct_t, std::tuple<Args1...> FirstArgs, std::tuple<Args2...> SecondArgs, const AllocatorType& InAllocator )
         :
 #if HAKLE_CPP_VERSION >= 17
-          ExplicitProducerAllocatorPair( std::apply( [ &InAllocator ]( Args1&&... args1 ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); }, FirstArgs ),
+          ExplicitProducerAllocatorPair( std::apply( [ &InAllocator ]( Args1&&... args1 ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); }, std::move( FirstArgs ) ),
                                          ExplicitProducerAllocatorType( InAllocator ) ),
-          ImplicitProducerAllocatorPair( std::apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, SecondArgs ),
+          ImplicitProducerAllocatorPair( std::apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, std::move( SecondArgs ) ),
                                          ImplicitProducerAllocatorType( InAllocator ) )
 #else
-          ExplicitProducerAllocatorPair( hakle::Apply( [ &InAllocator ]( Args1&&... args1 ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); }, FirstArgs ),
+          ExplicitProducerAllocatorPair( hakle::Apply( [ &InAllocator ]( Args1&&... args1 ) { return Traits::MakeExplicitBlockManager( ExplicitAllocatorType( InAllocator ), std::forward<Args1>( args1 )... ); }, std::move( FirstArgs ) ),
                                          ExplicitProducerAllocatorType( InAllocator ) ),
-          ImplicitProducerAllocatorPair( hakle::Apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, SecondArgs ),
+          ImplicitProducerAllocatorPair( hakle::Apply( [ &InAllocator ]( Args2&&... args2 ) { return Traits::MakeImplicitBlockManager( ImplicitAllocatorType( InAllocator ), std::forward<Args2>( args2 )... ); }, std::move( SecondArgs ) ),
                                          ImplicitProducerAllocatorType( InAllocator ) )
 #endif
     {
@@ -1447,6 +1447,8 @@ public:
 
     HAKLE_CPP14_CONSTEXPR void ClearList() noexcept {
         ForEachProducerSafe( [ this ]( ProducerListNode* Node ) { DeleteProducerListNode( Node ); } );
+        ProducerListsHead.store( nullptr, std::memory_order_relaxed );
+        ProducerCount.store( 0, std::memory_order_relaxed );
     }
 
     HAKLE_CPP14_CONSTEXPR void Reset() noexcept {

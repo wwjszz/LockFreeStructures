@@ -423,8 +423,19 @@ public:
     constexpr explicit HakleBlockManager( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} ) : BaseManager( InAllocator ), Pool( InSize, InAllocator ), List( InAllocator ) {}
     HAKLE_CPP20_CONSTEXPR ~HakleBlockManager() = default;
 
-    HAKLE_CPP14_CONSTEXPR                    HakleBlockManager( HakleBlockManager&& Other ) noexcept = default;
-    HAKLE_CPP14_CONSTEXPR HakleBlockManager& operator=( HakleBlockManager&& Other ) noexcept         = default;
+    HAKLE_CPP14_CONSTEXPR HakleBlockManager( HakleBlockManager&& Other ) noexcept = default;
+
+    HAKLE_CPP14_CONSTEXPR HakleBlockManager& operator=( HakleBlockManager&& Other ) noexcept {
+        if ( this != &Other ) {
+            // Producers return pool-owned blocks to the free list. Clear/move the
+            // list before the pool so it never traverses blocks after the pool
+            // storage has been released.
+            List = std::move( Other.List );
+            Pool = std::move( Other.Pool );
+            BaseManager::operator=( std::move( Other ) );
+        }
+        return *this;
+    }
 
     HAKLE_CPP14_CONSTEXPR                    HakleBlockManager( const HakleBlockManager& Other ) = delete;
     HAKLE_CPP14_CONSTEXPR HakleBlockManager& operator=( const HakleBlockManager& Other )         = delete;
@@ -498,10 +509,10 @@ inline HAKLE_CPP14_CONSTEXPR void swap( HakleBlockManager<BLOCK_TYPE, ALLOCATOR_
 #endif
 
 template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleFlagsBlock<T, BLOCK_SIZE>>>
-using HakleFlagsBlockManager = HakleBlockManager<HakleFlagsBlock<T, BLOCK_SIZE>>;
+using HakleFlagsBlockManager = HakleBlockManager<HakleFlagsBlock<T, BLOCK_SIZE>, ALLOCATOR_TYPE>;
 
 template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleCounterBlock<T, BLOCK_SIZE>>>
-using HakleCounterBlockManager = HakleBlockManager<HakleCounterBlock<T, BLOCK_SIZE>>;
+using HakleCounterBlockManager = HakleBlockManager<HakleCounterBlock<T, BLOCK_SIZE>, ALLOCATOR_TYPE>;
 
 inline constexpr std::size_t HAKLE_DEFAULT_POOL_SIZE = 1024;
 
