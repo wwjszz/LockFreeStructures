@@ -5,11 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 try:
     import matplotlib.pyplot as plt
@@ -75,7 +73,9 @@ MUTED = "#57606A"
 GRID = "#D0D7DE"
 
 
-def parse_results(path: Path) -> dict[str, dict[tuple[int, int], float]]:
+def parse_results(
+    path: Path,
+) -> tuple[dict[str, dict[tuple[int, int], float]], dict[str, object]]:
     with path.open(encoding="utf-8") as stream:
         document = json.load(stream)
 
@@ -98,7 +98,7 @@ def parse_results(path: Path) -> dict[str, dict[tuple[int, int], float]]:
         configuration = (int(match.group(1)), int(match.group(2)))
         results[benchmark][configuration] = float(throughput) / 1_000_000.0
 
-    return results
+    return results, document.get("context", {})
 
 
 def validate_results(
@@ -123,37 +123,9 @@ def validate_results(
     return configurations
 
 
-def endpoint_positions(
-    values: Iterable[tuple[Series, float]], minimum_log_gap: float
-) -> dict[str, float]:
-    ordered = sorted(
-        ((series, math.log10(value)) for series, value in values),
-        key=lambda item: item[1],
-    )
-    adjusted: list[list[object]] = []
-    for series, log_value in ordered:
-        label_log_value = log_value
-        if adjusted:
-            label_log_value = max(
-                label_log_value,
-                float(adjusted[-1][1]) + minimum_log_gap,
-            )
-        adjusted.append([series, label_log_value])
-
-    if adjusted:
-        highest_value = max(log_value for _, log_value in ordered)
-        shift = max(0.0, float(adjusted[-1][1]) - highest_value)
-        for item in adjusted:
-            item[1] = float(item[1]) - shift / 2.0
-
-    return {
-        item[0].benchmark: 10.0 ** float(item[1])
-        for item in adjusted
-    }
-
 def style_axis(axis: plt.Axes, axis_index: int) -> None:
     axis.set_facecolor("none")
-    axis.grid(axis="y", color=GRID, linewidth=0.8)
+    axis.grid(color=GRID, linewidth=0.8)
     axis.set_axisbelow(True)
     axis.tick_params(colors=MUTED, labelsize=10)
     axis.spines["top"].set_visible(False)
@@ -175,11 +147,6 @@ def plot_all_series(
     results: dict[str, dict[tuple[int, int], float]],
 ) -> None:
     x_values = list(range(len(configurations)))
-    final_values = [
-        (series, results[series.benchmark][configurations[-1]])
-        for series in SERIES
-    ]
-    label_positions = endpoint_positions(final_values, minimum_log_gap=0.065)
 
     for series in SERIES:
         values = [
@@ -198,26 +165,9 @@ def plot_all_series(
             markeredgecolor="white",
             markeredgewidth=0.8,
             zorder=4 if is_bulk else 3,
+            label=series.label,
         )[0]
         line.set_gid(f"series-{series.benchmark}")
-
-        endpoint = values[-1]
-        label_y = label_positions[series.benchmark]
-        axis.plot(
-            [x_values[-1] + 0.03, x_values[-1] + 0.20],
-            [endpoint, label_y],
-            color=series.color,
-            linewidth=1.0,
-            zorder=2,
-        )
-        axis.text(
-            x_values[-1] + 0.23,
-            label_y,
-            f"{series.label}  {endpoint:.2f}",
-            color=TEXT,
-            fontsize=9.2,
-            va="center",
-        )
 
     axis.set_yscale("log")
     axis.set_ylim(1.5, 1_300)
@@ -225,13 +175,22 @@ def plot_all_series(
     axis.set_yticklabels(["2", "5", "10", "20", "50", "100", "200", "500", "1,000"])
     axis.set_xticks(
         x_values,
-        [f"{producers}P / {consumers}C" for producers, consumers in configurations],
+        [f"{producers}P/{consumers}C" for producers, consumers in configurations],
     )
-    axis.set_xlim(-0.12, len(configurations) - 1 + 1.35)
+    axis.set_xlim(-0.12, len(configurations) - 1 + 0.12)
     axis.set_ylabel("Throughput (million items/s, log scale)", color=TEXT)
     axis.set_xlabel("Producer / consumer threads", color=MUTED)
+    axis.legend(
+        loc="center left",
+        bbox_to_anchor=(1.04, 0.5),
+        frameon=False,
+        fontsize=9.5,
+        handlelength=3.4,
+        labelspacing=1.0,
+    )
 
-def inject_accessibility_and_dark_theme(path: Path) -> None:
+
+def inject_accessibility_and_dark_theme(path: Path, title: str) -> None:
     svg = path.read_text(encoding="utf-8")
     svg = svg.replace(
         "<svg ",
@@ -240,8 +199,8 @@ def inject_accessibility_and_dark_theme(path: Path) -> None:
     )
     svg_tag_end = svg.index(">", svg.index("<svg"))
     additions = """
- <title id="chart-title">Queue throughput by producer and consumer configuration</title>
- <desc id="chart-desc">Each line represents one queue implementation or calling mode. The horizontal axis shows one producer and one consumer, four producers and four consumers, and sixteen producers and eight consumers. The vertical axis shows throughput in millions of items per second on a logarithmic scale so single-item and bulk operations remain visible together.</desc>
+ <title id="chart-title">{title}</title>
+ <desc id="chart-desc">Each line represents one queue implementation or calling mode. The horizontal axis shows balanced producer and consumer configurations from 1P/1C through 24P/24C. The vertical axis shows throughput in millions of items per second on a logarithmic scale so single-item and bulk operations remain visible together.</desc>
  <style>
  @media (prefers-color-scheme: dark) {
    text { fill: #f0f6fc !important; }
@@ -253,6 +212,7 @@ def inject_accessibility_and_dark_theme(path: Path) -> None:
    g[id^="ytick_"] use { stroke: #8c959f !important; }
  }
  </style>"""
+    additions = additions.replace("{title}", title)
     svg = svg[: svg_tag_end + 1] + additions + svg[svg_tag_end + 1 :]
     svg = "\n".join(line.rstrip() for line in svg.splitlines()) + "\n"
     path.write_text(svg, encoding="utf-8", newline="\n")
@@ -261,8 +221,14 @@ def inject_accessibility_and_dark_theme(path: Path) -> None:
 def create_plot(
     input_path: Path, output_path: Path, png_path: Path | None = None
 ) -> None:
-    results = parse_results(input_path)
+    results, context = parse_results(input_path)
     configurations = validate_results(results)
+    logical_cpu_count = context.get("num_cpus")
+    build_type = str(context.get("library_build_type", "release")).title()
+    configuration = f"Windows · MSVC 19.44 · {build_type}"
+    if logical_cpu_count:
+        configuration += f" · {logical_cpu_count} logical CPUs"
+    title = f"Concurrent Performance ({configuration})"
 
     plt.rcParams.update(
         {
@@ -277,46 +243,27 @@ def create_plot(
     figure, axis = plt.subplots(1, 1, figsize=(12, 6.8))
     figure.patch.set_alpha(0)
     figure.suptitle(
-        "Queue throughput on Windows",
+        title,
         fontsize=18,
-        fontweight="bold",
+        fontweight="normal",
         color=TEXT,
-        y=0.985,
+        y=0.955,
     )
-    figure.text(
-        0.5,
-        0.938,
-        "MSVC 19.44 · Release · Google Benchmark · 2026-07-29 · "
-        "single-item and batch-64 bulk · higher is better",
-        ha="center",
-        color=MUTED,
-        fontsize=9.5,
-    )
-
     plot_all_series(axis, configurations, results)
     style_axis(axis, 0)
 
-    figure.text(
-        0.5,
-        0.018,
-        "Queue construction and worker-thread creation are excluded from timing; "
-        "every run validates item count and checksum.",
-        ha="center",
-        color=MUTED,
-        fontsize=8.5,
-    )
-    figure.subplots_adjust(left=0.09, right=0.74, top=0.86, bottom=0.13)
+    figure.subplots_adjust(left=0.09, right=0.69, top=0.87, bottom=0.14)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(
         output_path,
         format="svg",
         transparent=True,
         metadata={
-            "Title": "Queue throughput by producer and consumer configuration",
-            "Description": "One line per queue on a logarithmic throughput axis.",
+            "Title": title,
+            "Description": "One line per queue, with names in the right-side legend and a logarithmic throughput axis.",
         },
     )
-    inject_accessibility_and_dark_theme(output_path)
+    inject_accessibility_and_dark_theme(output_path, title)
 
     if png_path is not None:
         png_path.parent.mkdir(parents=True, exist_ok=True)

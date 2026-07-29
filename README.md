@@ -103,28 +103,16 @@ cmake --build build --config Release --target queue_benchmark --parallel
 
 计时规则：队列构造、线程创建和队列析构位于暂停计时区；所有 worker 就绪后用 latch 同时起跑；报告
 wall-clock real time 和 `items_per_second`。每轮结束都会校验消费总数与 checksum，队列默认按各自增长策略
-运行，不为某一个实现额外预分配完整 workload。场景为 1P/1C、4P/4C、16P/8C；benchmark 不注册到
-CTest，避免常规测试被性能任务拖慢。
+运行，不为某一个实现额外预分配完整 workload。场景为 1P/1C、2P/2C、4P/4C、8P/8C、12P/12C、
+16P/16C、20P/20C 和 24P/24C；benchmark 不注册到 CTest，避免常规测试被性能任务拖慢。
 
 ### Windows 实测结果
 
-以下数据在 Windows、MSVC 19.44、Release 配置下于 2026-07-29 重新完整实测，Google Benchmark 的 `MinTime` 为 0.25 秒。横坐标为生产者/消费者线程配置，纵坐标为吞吐量（百万 items/s），每种队列实现或调用模式对应一条折线，数值越高越好。由于 bulk 吞吐量比单元素操作高约两个数量级，为了把所有队列保留在同一张图中且不压扁单元素曲线，纵轴使用对数刻度。
+以下数据在 Windows、MSVC 19.44、Release 配置下于 2026-07-29 重新完整实测，运行主机为 32 个逻辑处理器，Google Benchmark 的 `MinTime` 为 0.25 秒。横坐标为从 1P/1C 到 24P/24C 的生产者/消费者线程配置，纵坐标为吞吐量（百万 items/s）；每种队列实现或调用模式对应一条折线，名称统一标注在右侧图例中。由于 bulk 吞吐量比单元素操作高约两个数量级，为了把所有队列保留在同一张图中且不压扁单元素曲线，纵轴使用对数刻度。
 
 ![Queue throughput benchmark](docs/benchmark-throughput.svg)
 
-| Queue / mode | 1P / 1C | 4P / 4C | 16P / 8C |
-|---|---:|---:|---:|
-| Hakle implicit | 29.33 | 13.21 | 14.18 |
-| Hakle token | 35.35 | 23.59 | 26.04 |
-| Moodycamel implicit | 32.02 | 13.70 | 13.57 |
-| Moodycamel token | 36.96 | 24.80 | 27.01 |
-| Boost.Lockfree | 6.29 | 3.99 | 2.91 |
-| oneTBB | 8.15 | 10.99 | 11.74 |
-| Mutex queue | 30.25 | 7.91 | 2.17 |
-| Hakle token bulk (batch 64) | 375.53 | 715.38 | 897.46 |
-| Moodycamel token bulk (batch 64) | 334.25 | 755.66 | 958.12 |
-
-表中单位均为百万 items/s。完整原始数据保存在 `benchmark/results/windows-msvc-19.44-2026-07-29.json`，图表由 Python/matplotlib 脚本生成：
+完整原始数据保存在 `benchmark/results/windows-msvc-19.44-2026-07-29.json`，图表不在折线上标注具体数值，由 Python/matplotlib 脚本生成：
 
 ```powershell
 python -m pip install matplotlib

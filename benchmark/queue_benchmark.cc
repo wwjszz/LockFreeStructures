@@ -364,8 +364,13 @@ template <typename Queue> void run_bulk_mpmc(benchmark::State &state) {
 
 void mpmc_arguments(benchmark::internal::Benchmark *benchmark) {
   benchmark->Args({1, 1, 100000})
+      ->Args({2, 2, 100000})
       ->Args({4, 4, 100000})
-      ->Args({16, 8, 50000})
+      ->Args({8, 8, 50000})
+      ->Args({12, 12, 50000})
+      ->Args({16, 16, 50000})
+      ->Args({20, 20, 50000})
+      ->Args({24, 24, 50000})
       ->ArgNames({"producers", "consumers", "items_per_producer"})
       ->UseRealTime()
       ->Unit(benchmark::kMillisecond)
