@@ -45,7 +45,8 @@ bin/
 .idea
 
 # CMake
-build
+/build*/
+/Testing/
 .cache
 CMakeFiles
 CMakeCache.txt

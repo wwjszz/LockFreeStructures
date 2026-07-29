@@ -1,448 +1,147 @@
 # LockFreeStructures
 
-High-performance header-only lock-free concurrent queue library providing thread-safe multi-producer multi-consumer queue implementation.
+`LockFreeStructures` 是一个 C++20、header-only 的并发数据结构项目。当前主入口是
+`hakle::ConcurrentQueue<T>`：它参考 moodycamel::ConcurrentQueue 的分生产者队列设计，在其上重新组织了
+队列封装、Block/BlockManager、HashTable 和可替换 allocator/traits。
 
-## Project Overview
+本轮工程化重构只调整构建、测试、benchmark、文档和许可声明，不改队列实现源码。
 
-This project implements a high-performance lock-free concurrent queue based on Cameron Desrochers' design from the moodycamel concurrent queue project. Unlike the original implementation, this project supports C++11 to C++20 standards and provides highly customizable architecture with support for custom components. The library is completely header-only for easy integration.
+## 主要能力
 
-## Features
+- 多生产者、多消费者（MPMC）并发入队和出队。
+- implicit producer 与显式 `ProducerToken` / `ConsumerToken` 两套接口。
+- 单元素和 bulk 入队/出队。
+- 支持 move-only、非平凡析构类型。
+- allocator、Block 和 BlockManager 可通过模板及 traits 定制。
+- header-only，不需要单独编译库文件。
 
-- **Header-Only**: Single-header distribution for easy integration
-- **Thread-Safe**: Lock-free design supporting multi-producer multi-consumer concurrent access
-- **High Performance**: Avoids performance bottlenecks of traditional locks, suitable for high-concurrency scenarios
-- **Cross-Standard Support**: Compatible with C++11 to C++20 standards
-- **Highly Customizable**: Supports custom allocators, block managers, and other components
-- **Batch Operations**: Supports bulk enqueue and dequeue operations for better throughput
-- **Memory Efficient**: Optimized memory layout to reduce fragmentation
+队列延续 moodycamel 类设计的语义：保证单个 producer 内的 FIFO；多个 producer 之间没有一个统一的全局
+FIFO 顺序。Token 只能与创建它的队列配合使用，同一个 producer token 不应被多个生产线程同时操作。
 
-## Core Components
+## 基本使用
 
-### ConcurrentQueue
-Main queue class providing multi-producer multi-consumer concurrent queue functionality:
-- Supports explicit producer tokens (ProducerToken) and implicit producers
-- Supports consumer tokens (ConsumerToken) for optimized consumption
-- Thread-local caching mechanism for improved performance
-- Bulk operation support for efficient batch processing
-
-### Customizable Modules
-- **Allocator**: Customizable memory allocation strategies
-- **Block**: Customizable block structure for data storage
-- **BlockManager**: Customizable block management and memory recycling strategies
-
-## Build Requirements
-
-- C++11 or higher (supports C++11-C++20)
-- CMake 3.22 or higher
-- Compiler supporting atomic operations (GCC, Clang, MSVC)
-
-## Integration
-
-Since this is a header-only library, simply include the necessary headers:
-
-```c++
+```cpp
+#include <bit> // 当前公开头使用 std::has_single_bit，需由调用方先包含。
 #include "ConcurrentQueue/ConcurrentQueue.h"
-```
 
-No linking required!
-
-## Usage Examples
-
-### Basic Usage
-```c++
-#include "ConcurrentQueue/ConcurrentQueue.h"
-#include <vector>
-
-// Create concurrent queue
 hakle::ConcurrentQueue<int> queue;
+queue.Enqueue(42);
 
-// Producer thread
-auto token = queue.GetProducerToken();
-queue.EnqueueWithToken(token, 42);
-
-// Or use implicit producer
-queue.Enqueue(100);
-
-// Consumer thread
-int value;
+int value = 0;
 if (queue.TryDequeue(value)) {
-    // Process value
-}
-
-// Use consumer token for optimized consumption
-auto consumer_token = queue.GetConsumerToken();
-if (queue.TryDequeue(consumer_token, value)) {
-    // Process value
+  // value == 42
 }
 ```
 
-### Bulk Operations
-```c++
+显式 token：
+
+```cpp
+#include <bit>
 #include "ConcurrentQueue/ConcurrentQueue.h"
-#include <vector>
 
 hakle::ConcurrentQueue<int> queue;
+auto producer = queue.GetProducerToken();
+auto consumer = queue.GetConsumerToken();
 
-// Bulk enqueue using producer token
-auto token = queue.GetProducerToken();
-std::vector<int> items = {1, 2, 3, 4, 5};
-bool success = queue.EnqueueBulk(token, items.begin(), items.size());
+queue.EnqueueWithToken(producer, 7);
 
-// Bulk enqueue without token (implicit producer)
-std::vector<int> more_items = {10, 20, 30, 40, 50};
-success = queue.EnqueueBulk(more_items.begin(), more_items.size());
-
-// Bulk dequeue
-std::vector<int> output(10);
-size_t count = queue.TryDequeueBulk(output.begin(), output.size());
-
-// Process the first 'count' elements in output vector
-for (size_t i = 0; i < count; ++i) {
-    // Process output[i]
-}
+int value = 0;
+queue.TryDequeue(consumer, value);
 ```
 
-### Consumer Token Bulk Operations
-```c++
-#include "ConcurrentQueue/ConcurrentQueue.h"
-#include <vector>
+## 构建与测试
 
-hakle::ConcurrentQueue<int> queue;
-auto consumer_token = queue.GetConsumerToken();
+已在 Windows 11、Visual Studio 2022、MSVC 19.44、CMake 3.31 上实际编译和运行。CMake 会为 MSVC
+启用标准预处理器模式，因为项目宏使用了 `__VA_OPT__`。
 
-// Bulk dequeue with consumer token
-std::vector<int> results(100);
-size_t processed = queue.TryDequeueBulk(consumer_token, results.begin(), results.size());
-
-// Process the first 'processed' items
-for (size_t i = 0; i < processed; ++i) {
-    // Process results[i]
-}
+```powershell
+cmake -S . -B build -A x64 `
+  -DBUILD_TESTING=ON `
+  -DLOCKFREESTRUCTURES_BUILD_BENCHMARKS=OFF
+cmake --build build --config Debug --parallel
+ctest --test-dir build -C Debug --output-on-failure
 ```
 
-## Design Reference
+测试结构与 `co_mira` 一致：`test/test_*.cc` 中每个文件生成一个独立可执行文件，由轻量 `CHECK`
+测试框架输出 `[PASS]` / `[FAIL]`，再注册到 CTest。默认套件包含：
 
-This project draws inspiration from Cameron Desrochers' moodycamel concurrent queue project at https://github.com/cameron314/concurrentqueue/tree/master, with extensions and optimizations including:
+- 基础 API、implicit/explicit token、bulk、move-only、move construction 和 swap；
+- implicit/token/bulk MPMC，逐值去重校验及逐 producer FIFO；
+- 非平凡对象生命周期、构造异常恢复、自定义 allocator 分配/构造平衡。
 
-- Support for broader C++ standards (C++11-C++20)
-- Header-only distribution for easier integration
-- Modular architecture supporting custom components
-- Enhanced batch operation support for better throughput
-- Enhanced type safety and template design
+## Benchmark
 
-## Performance Characteristics
+benchmark 是可选目标，比较相同 MPMC workload 下的：
 
-- Lock-free design avoiding thread blocking
-- Optimized memory access patterns
-- Support for batch operations for better throughput
-- Thread-local caching to reduce contention
-- Efficient bulk operations for high-volume scenarios
+- `hakle::ConcurrentQueue`：implicit 与 token；
+- moodycamel::ConcurrentQueue：implicit、token 和 token bulk；
+- Boost.Lockfree `queue`；
+- oneTBB `concurrent_queue`；
+- `std::queue + std::mutex` 基线；
+- Hakle token bulk。
 
-## Notes
+Google Benchmark 和 oneTBB 会优先使用 `thirdparty/` 下已有源码，缺失时由 FetchContent 下载固定版本。
+Boost.Lockfree 需要本机 Boost headers；可通过 `BOOST_ROOT` 指定。仓库当前的 `thirdparty/boost_1_90_0`
+也会被自动识别。
 
-- Suitable for high-concurrency read-write scenarios
-- Consider memory management strategies
-- May require parameter tuning (like block size) under extreme loads
-- Header-only nature means compilation times may increase with usage
-- Bulk operations provide significant performance benefits for high-throughput scenarios
-
-## License
-
-See the [LICENSE](./LICENSE) file for licensing information.
-
-## FreeList
-
-由于存在ABA问题，导致如果按照简单的CAS操作，会导致操作在不应该成功的情况下成功。可以通过添加Tag避免ABA问题：
-
-### DCAS
-
-`每次比较时，不仅比较头指针，还需要比较tag。这样在任何在ABA之后执行的操作都会失败。这种方法的问题就是目标架构必须支持足够长度的无锁操作。当然也可以通过压缩指针等方式来使其达到要求。`
-```c++
-    /**
-     * Head的tag是整个链表中最大的。
-     * 以H1为例，当H1被get的时候，H1之后的结点的tag被增加为最大的。
-     * 如果H1被重新add，那么当前的head的结点的tag一定不会被之前的小，这就保证了两次的tag不一样。
-     * 当然在某种极端环境，会存在溢出，不过这种情况几乎不可能发生。
-     */
-    void Add( Node* InNode ) noexcept {
-        HeadPtr CurrentHead = Head().load( std::memory_order_relaxed );
-        HeadPtr NewHead{ InNode, 0 };
-
-        do {
-            NewHead.Tag = CurrentHead.Tag + 1;
-            InNode->FreeListNext.store( CurrentHead.Ptr, std::memory_order_relaxed );
-        } while ( !Head().compare_exchange_strong( CurrentHead, NewHead, std::memory_order_relaxed, std::memory_order_relaxed ) );
-    }
-
-    Node* TryGet() noexcept {
-        HeadPtr CurrentHead = Head().load( std::memory_order_relaxed );
-        HeadPtr NewHead;
-        while ( CurrentHead.Ptr != nullptr ) {
-            NewHead.Ptr = CurrentHead.Ptr->FreeListNext.load( std::memory_order_relaxed );
-            NewHead.Tag = CurrentHead.Tag + 1;
-            if ( Head().compare_exchange_strong( CurrentHead, NewHead, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
-                break;
-            }
-        }
-        return CurrentHead.Ptr;
-    }
+```powershell
+cmake -S . -B build -A x64 `
+  -DBUILD_TESTING=ON `
+  -DLOCKFREESTRUCTURES_BUILD_BENCHMARKS=ON `
+  -DBOOST_ROOT=C:\path\to\boost
+cmake --build build --config Release --target queue_benchmark --parallel
+.\build\benchmark\bin\queue_benchmark.exe
 ```
 
-### 引用计数
+只跑一组 smoke benchmark：
 
-`引入一个计数，用来表示当前有多少对象在使用当前结点，这样add的时候，如果检测到有对象在使用当前结点，就可以将add的任务交给最后一个离开结点的结点。`
-
-```c++
-    /**
-     * 在链表中且没有对象在使用的结点的引用计数为1
-     */
-    void Add( Node* InNode ) noexcept {
-        // Set AddFlag first
-        if ( InNode->FreeListRefs.fetch_add( AddFlag, std::memory_order_relaxed ) == 0 ) {
-            Node* CurrentHead = Head().load( std::memory_order_relaxed );
-            while ( true ) {
-                // first update next then refs
-                InNode->FreeListNext.store( CurrentHead, std::memory_order_relaxed );
-                InNode->FreeListRefs.store( 1, std::memory_order_release );
-                // refs may increase
-                if ( !Head().compare_exchange_strong( CurrentHead, InNode, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
-                    // if exchange failed, check if someone is using it
-                    if ( InNode->FreeListRefs.fetch_add( AddFlag - 1, std::memory_order_release ) == 1 ) {
-                        continue;
-                    } // else we can let the last user add it
-                }
-                return;
-            }
-        }
-    }
-
-    Node* TryGet() noexcept {
-        Node* CurrentHead = Head().load( std::memory_order_relaxed );
-        while ( CurrentHead != nullptr ) {
-            Node*    PrevHead = CurrentHead;
-            uint32_t Refs     = CurrentHead->FreeListRefs.load( std::memory_order_relaxed );
-            if ( ( Refs & RefsMask ) == 0  // check if already taken or adding
-                 || ( !CurrentHead->FreeListRefs.compare_exchange_strong( Refs, Refs + 1, std::memory_order_acquire,
-                                                                          std::memory_order_relaxed ) ) )  // try add refs
-            {
-                CurrentHead = Head().load( std::memory_order_relaxed );
-                continue;
-            }
-
-            // try Taken
-            Node* Next = CurrentHead->FreeListNext.load( std::memory_order_relaxed );
-            if ( Head().compare_exchange_strong( CurrentHead, Next, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
-                // taken success, decrease refcount twice, for our and list's ref
-                CurrentHead->FreeListRefs.fetch_add( -2, std::memory_order_relaxed );
-                return CurrentHead;
-            }
-
-            // taken failed, decrease refcount
-            Refs = PrevHead->FreeListRefs.fetch_add( -1, std::memory_order_relaxed );
-            if ( Refs == AddFlag + 1 ) {
-                // no one is using it, add it back
-                InnerAdd( PrevHead );
-            }
-        }
-        return nullptr;
-    }
+```powershell
+.\build\benchmark\bin\queue_benchmark.exe `
+  '--benchmark_filter=.*producers:1/consumers:1.*'
 ```
 
-## LockFreeHashTable
+计时规则：队列构造、线程创建和队列析构位于暂停计时区；所有 worker 就绪后用 latch 同时起跑；报告
+wall-clock real time 和 `items_per_second`。每轮结束都会校验消费总数与 checksum，队列默认按各自增长策略
+运行，不为某一个实现额外预分配完整 workload。场景为 1P/1C、4P/4C、16P/8C；benchmark 不注册到
+CTest，避免常规测试被性能任务拖慢。
 
-### LockFree LinearSearch
+### Windows 实测结果
 
-`简单的线性表查找，基于CAS操作。`
+以下数据在 Windows、MSVC 19.44、Release 配置下于 2026-07-29 重新完整实测，Google Benchmark 的 `MinTime` 为 0.25 秒。横坐标为生产者/消费者线程配置，纵坐标为吞吐量（百万 items/s），每种队列实现或调用模式对应一条折线，数值越高越好。由于 bulk 吞吐量比单元素操作高约两个数量级，为了把所有队列保留在同一张图中且不压扁单元素曲线，纵轴使用对数刻度。
 
-```c++
-/**
- * 简单的无锁线性表查找，INVALID_KEY=0
- */
-void SetItem( int InKey, int InValue ) noexcept {
-    for ( LinearSearchMapEntry& Entry : Data ) {
-        int CurrentKey = Entry.Key.Load();
+![Queue throughput benchmark](docs/benchmark-throughput.svg)
 
-        if ( CurrentKey != InKey ) {
-            if ( CurrentKey != 0 )
-                continue;
+| Queue / mode | 1P / 1C | 4P / 4C | 16P / 8C |
+|---|---:|---:|---:|
+| Hakle implicit | 29.33 | 13.21 | 14.18 |
+| Hakle token | 35.35 | 23.59 | 26.04 |
+| Moodycamel implicit | 32.02 | 13.70 | 13.57 |
+| Moodycamel token | 36.96 | 24.80 | 27.01 |
+| Boost.Lockfree | 6.29 | 3.99 | 2.91 |
+| oneTBB | 8.15 | 10.99 | 11.74 |
+| Mutex queue | 30.25 | 7.91 | 2.17 |
+| Hakle token bulk (batch 64) | 375.53 | 715.38 | 897.46 |
+| Moodycamel token bulk (batch 64) | 334.25 | 755.66 | 958.12 |
 
-            if ( !Entry.Key.CompareExchangeStrong( CurrentKey, InKey ) && CurrentKey != 0 && CurrentKey != InKey )
-                continue;
-        }
-        Entry.Value.Store( InValue );
-        return;
-    }
-}
+表中单位均为百万 items/s。完整原始数据保存在 `benchmark/results/windows-msvc-19.44-2026-07-29.json`，图表由 Python/matplotlib 脚本生成：
 
-int GetItem( int InKey ) const noexcept {
-    for ( const LinearSearchMapEntry& Entry : Data ) {
-        int CurrentKey = Entry.Key.Load();
-        if ( CurrentKey == InKey )
-            return Entry.Value.Load();
-        if ( CurrentKey == 0 )
-            break;
-    }
-    return 0;
-}
+```powershell
+python -m pip install matplotlib
+python benchmark/plot_benchmark.py `
+  benchmark/results/windows-msvc-19.44-2026-07-29.json `
+  --output docs/benchmark-throughput.svg
 ```
 
-### 固定大小的HashTable
+## 自定义 allocator
 
-`查找过程与线性查找类似，只不过开始位置为hash(key)。`
+allocator 不是 `std::allocator_traits` 接口，而是项目自己的 `HakeAllocatorTraits` 协议。allocator 需要提供
+`ValueType`、指针/引用/size 类型、`Allocate`、`Deallocate`、`Construct`、`Destroy`，并支持 rebind。
+完整示例见 `test/test_allocator_and_lifetime.cc`。
 
-```c++
-/**
- * 固定大小的Hashtable
- */
-void SetItem( uint32_t InKey, uint32_t InValue ) noexcept {
-    for ( uint32_t idx = IntegerHash( InKey );; ++idx ) {
-        idx &= ( N - 1 );
-        HashTableEntry& Entry = Data[ idx ];
+当前默认 BlockManager aliases 没有把自定义 allocator 类型继续传给 block manager；若要验证完整的 allocator
+传播，需要像测试示例一样提供自定义 queue traits。详见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
 
-        uint32_t CurrentKey = Entry.Key.Load();
-        if ( CurrentKey != InKey ) {
-            if ( CurrentKey != 0 )
-                continue;
+## 许可
 
-            if ( !Entry.Key.CompareExchangeStrong( CurrentKey, InKey ) && CurrentKey != 0 && CurrentKey != InKey )
-                continue;
-        }
-        Entry.Value.Store( InValue );
-        return;
-    }
-}
-
-int GetItem( uint32_t InKey ) const noexcept {
-    for ( uint32_t idx = IntegerHash( InKey );; ++idx ) {
-        idx &= ( N - 1 );
-        const HashTableEntry& Entry = Data[ idx ];
-
-        uint32_t CurrentKey = Entry.Key.Load();
-        if ( CurrentKey == InKey )
-            return Entry.Value.Load();
-        if ( CurrentKey == 0 )
-            break;
-    }
-    return 0;
-}
-```
-
-### 可变大小的HashTable
-
-`将多个固定大小的HashTable，链接起来就是可变大小的HashTable。`
-
-
-```c++
-/**
- * 如果发现不是从头部HashNode获取到的Value，则再把{Key, Value}写入头部HashNode
- */
-struct HashNode {
-    constexpr HashNode() = default;
-    constexpr explicit HashNode( std::size_t InCapacity ) noexcept : Capacity( InCapacity ) {}
-
-    HashNode*   Prev{ nullptr };
-    std::size_t Capacity{ 0 };
-    Entry*      Entries{ nullptr };
-};
-
-HAKLE_CPP14_CONSTEXPR Entry* InnerGetEntry( const TKey& Key, HashNode* CurrentMainHash ) const {
-    std::size_t HashId = Hash( Key );
-    for ( HashNode* CurrentHash = CurrentMainHash; CurrentHash != nullptr; CurrentHash = CurrentHash->Prev ) {
-        std::size_t Index = HashId;
-
-        while ( true ) {
-            Index &= CurrentHash->Capacity - 1;
-
-            TKey CurrentKey = CurrentHash->Entries[ Index ].First.load( std::memory_order_relaxed );
-            if ( CurrentKey == Key ) {
-                TValue CurrentValue = CurrentHash->Entries[ Index ].Second.load( std::memory_order_acquire );
-
-                if ( CurrentHash != CurrentMainHash ) {
-                    Index                          = HashId;
-                    const std::size_t MainCapacity = CurrentMainHash->Capacity;
-
-                    while ( true ) {
-                        Index &= MainCapacity - 1;
-                        auto Empty = INVALID_KEY;
-                        if ( CurrentMainHash->Entries[ Index ].First.compare_exchange_strong( Empty, Key, std::memory_order_acquire, std::memory_order_relaxed ) ) {
-                            CurrentMainHash->Entries[ Index ].Second.store( CurrentValue, std::memory_order_release );
-                            break;
-                        }
-                        ++Index;
-                    }
-                }
-
-                return &CurrentMainHash->Entries[ Index ];
-            }
-            if ( CurrentKey == INVALID_KEY ) {
-                break;
-            }
-            ++Index;
-        }
-    }
-    return nullptr;
-}
-
-HAKLE_CPP14_CONSTEXPR bool InnerAdd( const TKey& Key, const TValue& InValue, HashNode* CurrentMainHash ) {
-    std::size_t NewCount = EntriesCount.fetch_add( 1, std::memory_order_relaxed );
-
-    while ( true ) {
-        if ( NewCount >= ( CurrentMainHash->Capacity >> 1 ) && !HashResizeInProgressFlag().test_and_set( std::memory_order_acquire ) ) {
-            CurrentMainHash = MainHash().load( std::memory_order_acquire );
-            if ( NewCount < ( CurrentMainHash->Capacity >> 1 ) ) {
-                HashResizeInProgressFlag().clear( std::memory_order_relaxed );
-            }
-            else {
-                std::size_t NewCapacity = CurrentMainHash->Capacity << 1;
-                while ( NewCount >= NewCapacity >> 1 ) {
-                    NewCount <<= 1;
-                }
-                HashNode* NewHash = CreateNewHashNode( NewCapacity );
-                if ( NewHash == nullptr ) {
-                    EntriesCount.fetch_sub( 1, std::memory_order_relaxed );
-                    return false;
-                }
-                NewHash->Prev = CurrentMainHash;
-                MainHash().store( NewHash, std::memory_order_release );
-                HashResizeInProgressFlag().clear( std::memory_order_release );
-                CurrentMainHash = NewHash;
-            }
-        }
-
-        // if there is enough space, add the new entry
-        if ( NewCount < ( CurrentMainHash->Capacity >> 1 ) + ( CurrentMainHash->Capacity >> 2 ) ) {
-            std::size_t HashId = Hash( Key );
-            std::size_t Index  = HashId;
-            while ( true ) {
-                Index &= CurrentMainHash->Capacity - 1;
-
-                TKey CurrentKey = CurrentMainHash->Entries[ Index ].First.load( std::memory_order_relaxed );
-                if ( CurrentKey == INVALID_KEY ) {
-                    TKey Empty = INVALID_KEY;
-                    if ( CurrentMainHash->Entries[ Index ].First.compare_exchange_strong( Empty, Key, std::memory_order_acq_rel, std::memory_order_relaxed ) ) {
-                        CurrentMainHash->Entries[ Index ].Second.store( InValue, std::memory_order_release );
-                        break;
-                    }
-                }
-
-                ++Index;
-            }
-            return true;
-        }
-
-        CurrentMainHash = MainHash().load( std::memory_order_acquire );
-    }
-}
-```
-
-## LockFree SPMC Queue
-
-`这个项目的SPMC队列本质是一个Block数组的链表，Block内有BlockSize个元素，与可变大小的HashTable类似，SPMC队列也是使用链表来实现可变大小。只不过对于FastQueue来说，内部更能看作是一个Block的链表，IndexEntry只是用来承载Block，以便于计算索引等等。SlowQueue的话则没有利用这个链表，它纯粹是一个IndexEntry数组。`
-
-### FastQueue
-
-`FastQueue会将使用过的Block放在链表里但不会回收，当用到时直接放在空的IndexEntry就可以使用`
-
-### SlowQueue
-
-`SlowQueue设计上是全局的Queue，所以尽可能的减少内存占用，SlowQueue会将使用过的Block直接返回给BlockManager，以便供其他队列使用。`
+项目代码使用 Apache License 2.0。设计来源与 benchmark vendored 依赖的归属见 [NOTICE](NOTICE) 和
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。moodycamel 原始 header 保留其上游许可证头。

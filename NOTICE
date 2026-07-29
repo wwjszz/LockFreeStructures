@@ -1,0 +1,10 @@
+LockFreeStructures
+Copyright 2026 LockFreeStructures contributors
+
+This product contains a concurrent queue implementation inspired by
+moodycamel::ConcurrentQueue, originally developed by Cameron Desrochers.
+Copyright (c) 2013-2020 Cameron Desrochers.
+
+The unmodified moodycamel header used only by the benchmark is distributed
+under its upstream Simplified BSD / Boost Software License terms. See
+THIRD_PARTY_NOTICES.md and benchmark/third_party/moodycamel/LICENSE.md.

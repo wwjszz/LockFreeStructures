@@ -1,157 +1,229 @@
-﻿cmake_minimum_required(VERSION 3.22)
-project(LockFreeStructures CXX)
+cmake_minimum_required(VERSION 3.20)
+
+project(LockFreeStructures LANGUAGES CXX)
+
+include(CTest)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic -Werror -Wno-error=self-move")
-    # gcc bug
-    string(APPEND CMAKE_CXX_FLAGS " -Wno-error=maybe-uninitialized")
-elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    string(APPEND CMAKE_CXX_FLAGS " /W3 /utf-8")
-    # to avoid using the debug runtime library, which is not supported by the static runtime library
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}/MTd /Zi /Ob0 /Od /RTC1")
-endif ()
+option(LOCKFREESTRUCTURES_BUILD_BENCHMARKS
+       "Build queue comparison benchmarks"
+       OFF)
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3")
-elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    string(APPEND CMAKE_CXX_FLAGS_RELEASE " /O2")
-endif ()
+# Header-only library target used by tests and downstream projects.
+add_library(lockfree_structures INTERFACE)
+add_library(LockFreeStructures::lockfree_structures ALIAS lockfree_structures)
 
-include(FetchContent)
+target_include_directories(
+  lockfree_structures
+  INTERFACE
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>"
+)
 
-macro(fetch_or_use_local name url tag local_dir)
-    # check if directory exists
-    if (EXISTS ${local_dir}/CMakeLists.txt AND EXISTS ${local_dir}/.git)
-        message(STATUS "Found existing ${name} at ${local_dir}, skip downloading")
-        add_subdirectory(${local_dir} ${CMAKE_BINARY_DIR}/${name}-build)
-    else ()
-        # if exists and not complete
-        if (EXISTS ${local_dir})
-            message(STATUS "Removing incomplete ${name} at ${local_dir}...")
-            file(REMOVE_RECURSE ${local_dir})
-        endif ()
-        message(STATUS "Downloading ${name}...")
-        FetchContent_Declare(${name}
-                GIT_REPOSITORY ${url}
-                GIT_TAG ${tag}
-                SOURCE_DIR ${local_dir}
-        )
-        FetchContent_MakeAvailable(${name})
-    endif ()
-endmacro()
+target_compile_features(
+  lockfree_structures
+  INTERFACE
+    cxx_std_20
+)
 
-fetch_or_use_local(googletest https://github.com/google/googletest.git v1.14.0 ${CMAKE_SOURCE_DIR}/thirdparty/googletest)
-fetch_or_use_local(benchmark https://github.com/google/benchmark.git v1.9.0 ${CMAKE_SOURCE_DIR}/thirdparty/benchmark)
+target_compile_options(
+  lockfree_structures
+  INTERFACE
+    "$<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor>"
+)
 
-set(BENCHMARK_ENABLE_TESTING off)  # to suppress benchmark internal tests
+function(lockfree_enable_warnings target_name)
+  if(MSVC)
+    target_compile_options(
+      "${target_name}"
+      PRIVATE
+        /W4
+        /permissive-
+        /utf-8
+    )
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(
+      "${target_name}"
+      PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+  endif()
+endfunction()
 
-# ============================================================================
-# Compiler Options
-# ============================================================================
+find_package(Threads REQUIRED)
 
-# Include CheckCXXCompilerFlag module to check compiler flag support
-include(CheckCXXCompilerFlag)
+if(BUILD_TESTING)
+  set(TEST_BIN_DIR "${PROJECT_BINARY_DIR}/test/bin")
 
-# Check if compiler supports -Wno-interference-size option
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    # Check if the warning option is supported
-    check_cxx_compiler_flag("-Wno-interference-size" COMPILER_SUPPORTS_WNO_INTERFERENCE_SIZE)
+  file(
+    GLOB TEST_SOURCES
+    CONFIGURE_DEPENDS
+      "${PROJECT_SOURCE_DIR}/test/test_*.cc"
+      "${PROJECT_SOURCE_DIR}/test/test_*.cpp"
+      "${PROJECT_SOURCE_DIR}/test/test_*.cxx"
+  )
 
-    if (COMPILER_SUPPORTS_WNO_INTERFERENCE_SIZE)
-        add_compile_options(-Wno-interference-size)
-        message(STATUS "Compiler supports -Wno-interference-size option, added")
-    else ()
-        message(STATUS "Compiler does not support -Wno-interference-size option, skipped")
-    endif ()
-endif ()
+  foreach(TEST_SOURCE IN LISTS TEST_SOURCES)
+    get_filename_component(TEST_NAME "${TEST_SOURCE}" NAME_WE)
 
-# ============================================================================
-# include directories
-# ============================================================================
+    add_executable("${TEST_NAME}" "${TEST_SOURCE}")
 
-include_directories(${PROJECT_SOURCE_DIR}/)
+    target_link_libraries(
+      "${TEST_NAME}"
+      PRIVATE
+        LockFreeStructures::lockfree_structures
+        Threads::Threads
+    )
 
-# ============================================================================
-# targets
-# ============================================================================
+    lockfree_enable_warnings("${TEST_NAME}")
 
-add_executable(normaltest tests/test.cpp)
-add_executable(unittest tests/unittests.cpp tests/simplethread.cpp)
-add_executable(samples_linearsearchmaptest tests/samples_linearsearchmaptest.cpp)
-add_executable(samples_hashtabletest tests/samples_hashtabletest.cpp)
-add_executable(hashtabletest tests/hashtabletest.cpp)
-add_executable(freelisttest tests/freelisttest.cpp)
-add_executable(blockpooltest tests/blockpooltest.cpp)
-add_executable(fastqueuetest tests/fastqueuetest.cpp tests/Debug/ThrowOn.cpp)
-add_executable(fastqueuetest_exception tests/fastqueuetest_exception.cpp tests/Debug/ThrowOn.cpp)
-add_executable(slowqueuetest tests/slowqueuetest.cpp tests/Debug/ThrowOn.cpp)
-add_executable(slowqueuetest_exception tests/slowqueuetest_exception.cpp tests/Debug/ThrowOn.cpp)
-add_executable(fastqueuetest_leaks tests/fastqueuetest_leaks.cpp)
-add_executable(slowqueuetest_leaks tests/slowqueuetest_leaks.cpp)
-add_executable(other_test tests/other_test.cpp)
-add_executable(concurrentqueuetest_benchmarks tests/concurrentqueuetest_benchmarks.cpp)
-add_executable(concurrentqueuetest_check tests/concurrentqueuetest_check.cpp)
-add_executable(concurrentqueuetest_swap_check tests/concurrentqueuetest_swap_check.cpp)
-add_executable(concurrentqueuetest_obj_check tests/cq_obj_check.cpp)
-add_executable(concurrentqueuetest_exception_obj_check tests/cq_exception_obj_check.cpp)
-add_executable(int_bench tests/main_bench.cpp)
-add_executable(obj_bench tests/obj_main_bench.cpp)
-add_executable(customized tests/customized.cpp)
+    add_test(
+      NAME "${TEST_NAME}"
+      COMMAND "$<TARGET_FILE:${TEST_NAME}>"
+    )
 
-target_link_libraries(customized PRIVATE gtest_main)
-target_link_libraries(samples_linearsearchmaptest PRIVATE gtest_main)
-target_link_libraries(samples_hashtabletest PRIVATE gtest_main)
-target_link_libraries(hashtabletest PRIVATE gtest_main)
-target_link_libraries(freelisttest PRIVATE gtest_main)
-target_link_libraries(blockpooltest PRIVATE gtest_main)
-target_link_libraries(fastqueuetest PRIVATE gtest_main)
-target_link_libraries(fastqueuetest_exception PRIVATE gtest_main)
-target_link_libraries(slowqueuetest PRIVATE gtest_main)
-target_link_libraries(slowqueuetest_exception PRIVATE gtest_main)
-target_link_libraries(fastqueuetest_leaks PRIVATE gtest_main)
-target_link_libraries(slowqueuetest_leaks PRIVATE gtest_main)
-target_link_libraries(other_test PRIVATE gtest_main)
-target_link_libraries(concurrentqueuetest_benchmarks PRIVATE gtest_main)
-target_link_libraries(concurrentqueuetest_check PRIVATE gtest_main)
-target_link_libraries(concurrentqueuetest_swap_check PRIVATE gtest_main)
-target_link_libraries(concurrentqueuetest_obj_check PRIVATE gtest_main)
-target_link_libraries(concurrentqueuetest_exception_obj_check PRIVATE gtest_main)
+    set_tests_properties(
+      "${TEST_NAME}"
+      PROPERTIES
+        TIMEOUT 30
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    )
 
-target_link_libraries(int_bench PRIVATE benchmark::benchmark benchmark::benchmark_main)
-# if use FreeList_DAS
-#target_link_libraries(int_bench PRIVATE benchmark::benchmark benchmark::benchmark_main libatomic)
-target_link_libraries(obj_bench PRIVATE benchmark::benchmark benchmark::benchmark_main)
+    set_target_properties(
+      "${TEST_NAME}"
+      PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${TEST_BIN_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${TEST_BIN_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${TEST_BIN_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${TEST_BIN_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${TEST_BIN_DIR}"
+    )
+  endforeach()
+endif()
 
-target_compile_definitions(hashtabletest PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-target_compile_definitions(fastqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-target_compile_definitions(slowqueuetest_leaks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-target_compile_definitions(concurrentqueuetest_benchmarks PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-target_compile_definitions(concurrentqueuetest_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-target_compile_definitions(concurrentqueuetest_swap_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-target_compile_definitions(concurrentqueuetest_obj_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
-target_compile_definitions(concurrentqueuetest_exception_obj_check PRIVATE ENABLE_MEMORY_LEAK_DETECTION)
+if(LOCKFREESTRUCTURES_BUILD_BENCHMARKS)
+  include(FetchContent)
 
+  # Keep dependency tests and optional components out of this project's build.
+  set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+  set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+  set(TBB_TEST OFF CACHE BOOL "" FORCE)
+  set(TBB_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(TBB_STRICT OFF CACHE BOOL "" FORCE)
 
-enable_testing()
+  if(NOT TARGET benchmark::benchmark)
+    find_package(benchmark CONFIG QUIET)
+  endif()
 
-add_test(NAME samples_linearsearchmaptest COMMAND samples_hashtabletest)
-add_test(NAME samples_hashtabletest COMMAND samples_hashtabletest)
-add_test(NAME hashtabletest COMMAND hashtabletest)
-add_test(NAME freelisttest COMMAND freelisttest)
-add_test(NAME blockpooltest COMMAND blockpooltest)
-add_test(NAME fastqueuetest COMMAND fastqueuetest)
-add_test(NAME fastqueuetest_exception COMMAND fastqueuetest_exception)
-add_test(NAME slowqueuetest COMMAND slowqueuetest)
-add_test(NAME slowqueuetest_exception COMMAND slowqueuetest_exception)
-add_test(NAME slowqueuetest_leaks COMMAND slowqueuetest_leaks)
-add_test(NAME fastqueuetest_leaks COMMAND fastqueuetest_leaks)
-add_test(NAME concurrentqueuetest_check COMMAND concurrentqueuetest_check)
-add_test(NAME concurrentqueuetest_swap_check COMMAND concurrentqueuetest_swap_check)
-add_test(NAME customized COMMAND customized)
+  if(NOT TARGET benchmark::benchmark)
+    if(EXISTS "${PROJECT_SOURCE_DIR}/thirdparty/benchmark/CMakeLists.txt")
+      add_subdirectory(
+        "${PROJECT_SOURCE_DIR}/thirdparty/benchmark"
+        "${PROJECT_BINARY_DIR}/_deps/benchmark-build"
+        EXCLUDE_FROM_ALL
+      )
+    else()
+      FetchContent_Declare(
+        googlebenchmark
+        GIT_REPOSITORY https://github.com/google/benchmark.git
+        GIT_TAG v1.9.0
+        GIT_SHALLOW TRUE
+      )
+      FetchContent_MakeAvailable(googlebenchmark)
+    endif()
+  endif()
+
+  if(NOT TARGET TBB::tbb)
+    find_package(TBB CONFIG QUIET)
+  endif()
+
+  if(NOT TARGET TBB::tbb)
+    if(EXISTS "${PROJECT_SOURCE_DIR}/thirdparty/onetbb/CMakeLists.txt")
+      add_subdirectory(
+        "${PROJECT_SOURCE_DIR}/thirdparty/onetbb"
+        "${PROJECT_BINARY_DIR}/_deps/onetbb-build"
+        EXCLUDE_FROM_ALL
+      )
+    else()
+      FetchContent_Declare(
+        onetbb
+        GIT_REPOSITORY https://github.com/oneapi-src/oneTBB.git
+        GIT_TAG v2021.13.0
+        GIT_SHALLOW TRUE
+      )
+      FetchContent_MakeAvailable(onetbb)
+    endif()
+  endif()
+
+  find_path(
+    LOCKFREESTRUCTURES_BOOST_INCLUDE_DIR
+    NAMES boost/lockfree/queue.hpp
+    HINTS
+      "${PROJECT_SOURCE_DIR}/thirdparty/boost_1_90_0"
+      "$ENV{BOOST_ROOT}"
+  )
+
+  if(NOT LOCKFREESTRUCTURES_BOOST_INCLUDE_DIR)
+    find_package(Boost 1.74 QUIET)
+    if(Boost_FOUND)
+      set(LOCKFREESTRUCTURES_BOOST_INCLUDE_DIR "${Boost_INCLUDE_DIRS}")
+    endif()
+  endif()
+
+  if(NOT LOCKFREESTRUCTURES_BOOST_INCLUDE_DIR)
+    message(
+      FATAL_ERROR
+      "Boost.Lockfree headers were not found. Install Boost 1.74+ or set BOOST_ROOT."
+    )
+  endif()
+
+  add_executable(
+    queue_benchmark
+    "${PROJECT_SOURCE_DIR}/benchmark/queue_benchmark.cc"
+  )
+
+  target_include_directories(
+    queue_benchmark
+    SYSTEM
+    PRIVATE
+      "${LOCKFREESTRUCTURES_BOOST_INCLUDE_DIR}"
+      "${PROJECT_SOURCE_DIR}/benchmark/third_party"
+  )
+
+  target_link_libraries(
+    queue_benchmark
+    PRIVATE
+      LockFreeStructures::lockfree_structures
+      Threads::Threads
+      benchmark::benchmark
+      TBB::tbb
+  )
+
+  lockfree_enable_warnings(queue_benchmark)
+
+  set_target_properties(
+    queue_benchmark
+    PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/benchmark/bin"
+      RUNTIME_OUTPUT_DIRECTORY_DEBUG "${PROJECT_BINARY_DIR}/benchmark/bin"
+      RUNTIME_OUTPUT_DIRECTORY_RELEASE "${PROJECT_BINARY_DIR}/benchmark/bin"
+      RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${PROJECT_BINARY_DIR}/benchmark/bin"
+      RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${PROJECT_BINARY_DIR}/benchmark/bin"
+  )
+
+  if(WIN32)
+    add_custom_command(
+      TARGET queue_benchmark
+      POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+              "$<TARGET_FILE:TBB::tbb>"
+              "$<TARGET_FILE_DIR:queue_benchmark>"
+      VERBATIM
+    )
+  endif()
+endif()
