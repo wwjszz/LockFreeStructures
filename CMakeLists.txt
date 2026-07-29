@@ -29,12 +29,6 @@ target_compile_features(
     cxx_std_20
 )
 
-target_compile_options(
-  lockfree_structures
-  INTERFACE
-    "$<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor>"
-)
-
 function(lockfree_enable_warnings target_name)
   if(MSVC)
     target_compile_options(

@@ -16,33 +16,7 @@ namespace hakle {
 
 #define HAKLE_SEM ;
 
-#if HAKLE_CPP_VERSION >= 20
-
-// support 256 levels
-#define HAKLE_EXPAND( ... ) HAKLE_EXPAND4( HAKLE_EXPAND4( HAKLE_EXPAND4( HAKLE_EXPAND4( __VA_ARGS__ ) ) ) )
-#define HAKLE_EXPAND4( ... ) HAKLE_EXPAND3( HAKLE_EXPAND3( HAKLE_EXPAND3( HAKLE_EXPAND3( __VA_ARGS__ ) ) ) )
-#define HAKLE_EXPAND3( ... ) HAKLE_EXPAND2( HAKLE_EXPAND2( HAKLE_EXPAND2( HAKLE_EXPAND2( __VA_ARGS__ ) ) ) )
-#define HAKLE_EXPAND2( ... ) HAKLE_EXPAND1( HAKLE_EXPAND1( HAKLE_EXPAND1( HAKLE_EXPAND1( __VA_ARGS__ ) ) ) )
-#define HAKLE_EXPAND1( ... ) __VA_ARGS__
-
-#define HAKLE_FOR_EACH( macro, concat, ... ) __VA_OPT__( HAKLE_EXPAND( HAKLE_FOR_EACH_IMPL( macro, concat, __VA_ARGS__ ) ) )
-#define HAKLE_FOR_EACH_IMPL( macro, concat, first, ... ) macro( first ) __VA_OPT__( concat HAKLE_FOR_EACH_IMPL_ HAKLE_PAREN( macro, concat, __VA_ARGS__ ) )
-
-#define HAKLE_FOR_EACH_COMMA( macro, ... ) __VA_OPT__( HAKLE_EXPAND( HAKLE_FOR_EACH_IMPL_COMMA( macro, __VA_ARGS__ ) ) )
-#define HAKLE_FOR_EACH_IMPL_COMMA( macro, first, ... ) macro( first ) __VA_OPT__(, HAKLE_FOR_EACH_IMPL_COMMA_ HAKLE_PAREN( macro, __VA_ARGS__ ) )
-
-#define HAKLE_PAREN ()
-#define HAKLE_FOR_EACH_IMPL_() HAKLE_FOR_EACH_IMPL
-#define HAKLE_FOR_EACH_IMPL_COMMA_() HAKLE_FOR_EACH_IMPL_COMMA
-
-#define HAKLE_SWAP_REQUIES     \
-    HAKLE_REQUIRES( requires { \
-        { lhs.swap( rhs ) };   \
-    } )
-
-#else
-
-// support 10 levels
+// Support up to 10 arguments with fixed-arity macro expansion.
 #define HAKLE_EXPAND_10( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_9( macro, concat, __VA_ARGS__ )
 #define HAKLE_EXPAND_9( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_8( macro, concat, __VA_ARGS__ )
 #define HAKLE_EXPAND_8( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_7( macro, concat, __VA_ARGS__ )
@@ -69,8 +43,8 @@ namespace hakle {
 
 #define HAKLE_EXPAND_CONCAT( x ) x
 
-#define HAKLE_ARGS_COUNT( ... ) HAKLE_ARGS_COUNT_IMPL( __VA_ARGS__, 5, 4, 3, 2, 1, 0 )
-#define HAKLE_ARGS_COUNT_IMPL( _1, _2, _3, _4, _5, N, ... ) N
+#define HAKLE_ARGS_COUNT( ... ) HAKLE_ARGS_COUNT_IMPL( __VA_ARGS__, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 )
+#define HAKLE_ARGS_COUNT_IMPL( _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N, ... ) N
 
 #define HAKLE_CONCAT_( a, b ) a##b
 #define HAKLE_CONCAT( a, b ) HAKLE_CONCAT_( a, b )
@@ -78,6 +52,11 @@ namespace hakle {
 #define HAKLE_FOR_EACH( macro, concat, ... ) HAKLE_CONCAT( HAKLE_EXPAND_, HAKLE_ARGS_COUNT( __VA_ARGS__ ) )( macro, HAKLE_EXPAND_CONCAT( concat ), __VA_ARGS__ )
 #define HAKLE_FOR_EACH_COMMA( macro, ... ) HAKLE_CONCAT( HAKLE_EXPAND_COMMA_, HAKLE_ARGS_COUNT( __VA_ARGS__ ) )( macro, __VA_ARGS__ )
 
+#if HAKLE_CPP_VERSION >= 20
+#define HAKLE_SWAP_REQUIES     \
+    HAKLE_REQUIRES( requires { \
+        { lhs.swap( rhs ) };   \
+    } )
 #endif
 
 #define HAKLE_MOVE_ATOMIC( X ) X( std::move( Other.X.load( std::memory_order_relaxed ) ) )

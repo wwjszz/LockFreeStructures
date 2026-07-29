@@ -1,5 +1,3 @@
-#include <bit>
-
 #include "ConcurrentQueue/ConcurrentQueue.h"
 #include "moodycamel/concurrentqueue.h"
 

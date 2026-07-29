@@ -1,5 +1,3 @@
-#include <bit>
-
 #include "ConcurrentQueue/ConcurrentQueue.h"
 #include "test_support.hpp"
 
