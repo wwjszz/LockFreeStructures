@@ -1,15 +1,14 @@
 # LockFreeStructures
 
 LockFreeStructures is a header-only C++20 library for concurrent data
-structures. Its primary interface is `hakle::ConcurrentQueue<T>`, an MPMC queue
-based on the per-producer subqueue design used by
-`moodycamel::ConcurrentQueue`.
+structures, providing a wrapper based on `moodycamel::ConcurrentQueue`. Its
+primary interface is `hakle::ConcurrentQueue<T>`, an MPMC queue built around
+moodycamel's per-producer subqueue design.
 
 ## Features
 
 - Implicit producers and explicit `ProducerToken` / `ConsumerToken` APIs
 - Single-item and bulk enqueue/dequeue operations
-- Support for move-only values and non-trivial destructors
 - Customizable allocators, blocks, block managers, and queue traits
 - Header-only integration
 
