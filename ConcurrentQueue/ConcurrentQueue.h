@@ -1323,7 +1323,7 @@ private:
 template <class T, HAKLE_CONCEPT( IsAllocator ) Allocator>
 struct ConcurrentQueueDefaultTraits {
     static constexpr std::size_t BlockSize                = 32;
-    static constexpr std::size_t InitialBlockPoolSize     = 32 * BlockSize;
+    static constexpr std::size_t InitialBlockPoolSize     = 32; // Counted in blocks, not elements.
     static constexpr std::size_t InitialHashSize          = 32;
     static constexpr std::size_t InitialExplicitQueueSize = 32;
     static constexpr std::size_t InitialImplicitQueueSize = 32;
@@ -1704,7 +1704,7 @@ public:
         void swap( ConsumerToken& Other ) noexcept {
             using std::swap;
             swap( InitialOffset, Other.InitialOffset );
-            swap( DesiredProducer, Other.DesiredProducer );
+            swap( ItemsConsumed, Other.ItemsConsumed );
             swap( LastKnownGlobalOffset, Other.LastKnownGlobalOffset );
             swap( CurrentProducer, Other.CurrentProducer );
             swap( DesiredProducer, Other.DesiredProducer );
@@ -1882,13 +1882,13 @@ private:
     }
 
     constexpr void ForEachProducer( std::function<void( ProducerListNode* )> Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
-        for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_relaxed ); Node != nullptr; Node = Node->Next ) {
+        for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_acquire ); Node != nullptr; Node = Node->Next ) {
             Func( Node );
         }
     }
 
     HAKLE_CPP14_CONSTEXPR void ForEachProducerWithBreak( std::function<bool( ProducerListNode* )> Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
-        for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_relaxed ); Node != nullptr; Node = Node->Next ) {
+        for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_acquire ); Node != nullptr; Node = Node->Next ) {
             if ( !Func( Node ) ) {
                 return;
             }
@@ -1896,7 +1896,7 @@ private:
     }
 
     HAKLE_CPP14_CONSTEXPR bool ForEachProducerWithReturn( std::function<bool( ProducerListNode* )> Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
-        for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_relaxed ); Node != nullptr; Node = Node->Next ) {
+        for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_acquire ); Node != nullptr; Node = Node->Next ) {
             if ( Func( Node ) ) {
                 return true;
             }
@@ -1931,7 +1931,7 @@ private:
 
         std::uint32_t Delta = GlobalOffset - Token.LastKnownGlobalOffset;
         if ( Delta >= ProducerCount ) {
-            Delta = Delta & ProducerCount;
+            Delta %= ProducerCount;
         }
         for ( std::uint32_t i = 0; i < Delta; ++i ) {
             Token.DesiredProducer = Token.DesiredProducer->Next;

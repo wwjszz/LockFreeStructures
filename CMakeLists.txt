@@ -37,6 +37,7 @@ function(lockfree_enable_warnings target_name)
         /W4
         /permissive-
         /utf-8
+        /Zc:preprocessor
     )
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(

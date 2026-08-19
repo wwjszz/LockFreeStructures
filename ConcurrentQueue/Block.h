@@ -7,9 +7,7 @@
 
 #include <array>
 #include <atomic>
-#if HAKLE_CPP_VERSION >= 17
 #include <bit>
-#endif
 #if defined( ENABLE_MEMORY_LEAK_DETECTION )
 #include <cstdio>
 #endif
