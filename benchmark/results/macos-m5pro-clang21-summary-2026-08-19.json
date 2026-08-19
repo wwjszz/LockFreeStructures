@@ -1,0 +1,1645 @@
+{
+  "host": "apple-m5-pro",
+  "compiler": "clang-21",
+  "cpus": 18,
+  "results": [
+    {
+      "tag": "base",
+      "name": "hakle_default_implicit",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        7.62229,
+        8.10729,
+        8.87167
+      ],
+      "ns_per_item_min": 7.62229,
+      "ns_per_item_median": 8.10729,
+      "million_items_per_second_median": 123.34577892242659
+    },
+    {
+      "tag": "base",
+      "name": "hakle_default_implicit",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        47.6877,
+        48.8876,
+        51.517
+      ],
+      "ns_per_item_min": 47.6877,
+      "ns_per_item_median": 48.8876,
+      "million_items_per_second_median": 20.45508472496093
+    },
+    {
+      "tag": "base",
+      "name": "hakle_default_implicit",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        39.8785,
+        40.5386,
+        41.4483
+      ],
+      "ns_per_item_min": 39.8785,
+      "ns_per_item_median": 40.5386,
+      "million_items_per_second_median": 24.667847434297187
+    },
+    {
+      "tag": "base",
+      "name": "hakle_default_implicit",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        43.6691,
+        44.1741,
+        45.206
+      ],
+      "ns_per_item_min": 43.6691,
+      "ns_per_item_median": 44.1741,
+      "million_items_per_second_median": 22.63769946642942
+    },
+    {
+      "tag": "base",
+      "name": "hakle_default_implicit",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        37.8776,
+        38.3229,
+        39.0229
+      ],
+      "ns_per_item_min": 37.8776,
+      "ns_per_item_median": 38.3229,
+      "million_items_per_second_median": 26.0940586437874
+    },
+    {
+      "tag": "base",
+      "name": "hakle_default_token",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        7.82146,
+        8.17313,
+        8.24021
+      ],
+      "ns_per_item_min": 7.82146,
+      "ns_per_item_median": 8.17313,
+      "million_items_per_second_median": 122.35214660723615
+    },
+    {
+      "tag": "base",
+      "name": "hakle_default_token",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        10.5456,
+        13.5266,
+        20.3777
+      ],
+      "ns_per_item_min": 10.5456,
+      "ns_per_item_median": 13.5266,
+      "million_items_per_second_median": 73.92840772995432
+    },
+    {
+      "tag": "base",
+      "name": "hakle_default_token",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        9.09177,
+        10.7165,
+        12.1088
+      ],
+      "ns_per_item_min": 9.09177,
+      "ns_per_item_median": 10.7165,
+      "million_items_per_second_median": 93.31404842999113
+    },
+    {
+      "tag": "base",
+      "name": "hakle_default_token",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        8.35688,
+        8.36776,
+        9.82432
+      ],
+      "ns_per_item_min": 8.35688,
+      "ns_per_item_median": 8.36776,
+      "million_items_per_second_median": 119.50629559165176
+    },
+    {
+      "tag": "base",
+      "name": "hakle_default_token",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        10.0466,
+        10.3956,
+        12.8864
+      ],
+      "ns_per_item_min": 10.0466,
+      "ns_per_item_median": 10.3956,
+      "million_items_per_second_median": 96.19454384547309
+    },
+    {
+      "tag": "base",
+      "name": "hakle_slab_implicit",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        7.49125,
+        7.635,
+        8.04604
+      ],
+      "ns_per_item_min": 7.49125,
+      "ns_per_item_median": 7.635,
+      "million_items_per_second_median": 130.97576948264572
+    },
+    {
+      "tag": "base",
+      "name": "hakle_slab_implicit",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        45.81,
+        50.1193,
+        50.71
+      ],
+      "ns_per_item_min": 45.81,
+      "ns_per_item_median": 50.1193,
+      "million_items_per_second_median": 19.95239358889689
+    },
+    {
+      "tag": "base",
+      "name": "hakle_slab_implicit",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        40.2508,
+        40.3124,
+        41.9232
+      ],
+      "ns_per_item_min": 40.2508,
+      "ns_per_item_median": 40.3124,
+      "million_items_per_second_median": 24.80626308530378
+    },
+    {
+      "tag": "base",
+      "name": "hakle_slab_implicit",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        43.7882,
+        43.8373,
+        45.6718
+      ],
+      "ns_per_item_min": 43.7882,
+      "ns_per_item_median": 43.8373,
+      "million_items_per_second_median": 22.811623891069935
+    },
+    {
+      "tag": "base",
+      "name": "hakle_slab_implicit",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        38.3421,
+        38.6287,
+        38.8863
+      ],
+      "ns_per_item_min": 38.3421,
+      "ns_per_item_median": 38.6287,
+      "million_items_per_second_median": 25.887487800521374
+    },
+    {
+      "tag": "base",
+      "name": "hakle_slab_token",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        7.93459,
+        8.31813,
+        8.36688
+      ],
+      "ns_per_item_min": 7.93459,
+      "ns_per_item_median": 8.31813,
+      "million_items_per_second_median": 120.21932814226274
+    },
+    {
+      "tag": "base",
+      "name": "hakle_slab_token",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        18.7742,
+        20.2859,
+        20.6588
+      ],
+      "ns_per_item_min": 18.7742,
+      "ns_per_item_median": 20.2859,
+      "million_items_per_second_median": 49.29532335267353
+    },
+    {
+      "tag": "base",
+      "name": "hakle_slab_token",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        10.4195,
+        10.9721,
+        11.1623
+      ],
+      "ns_per_item_min": 10.4195,
+      "ns_per_item_median": 10.9721,
+      "million_items_per_second_median": 91.14025573955762
+    },
+    {
+      "tag": "base",
+      "name": "hakle_slab_token",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        7.95552,
+        8.23479,
+        9.13297
+      ],
+      "ns_per_item_min": 7.95552,
+      "ns_per_item_median": 8.23479,
+      "million_items_per_second_median": 121.43600504688037
+    },
+    {
+      "tag": "base",
+      "name": "hakle_slab_token",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        9.68464,
+        10.441,
+        10.8709
+      ],
+      "ns_per_item_min": 9.68464,
+      "ns_per_item_median": 10.441,
+      "million_items_per_second_median": 95.77626664112633
+    },
+    {
+      "tag": "base",
+      "name": "moodycamel_implicit",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        19.2881,
+        20.5688,
+        22.6708
+      ],
+      "ns_per_item_min": 19.2881,
+      "ns_per_item_median": 20.5688,
+      "million_items_per_second_median": 48.61732332464704
+    },
+    {
+      "tag": "base",
+      "name": "moodycamel_implicit",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        61.1809,
+        64.5451,
+        65.8974
+      ],
+      "ns_per_item_min": 61.1809,
+      "ns_per_item_median": 64.5451,
+      "million_items_per_second_median": 15.493042849108607
+    },
+    {
+      "tag": "base",
+      "name": "moodycamel_implicit",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        56.9508,
+        60.0299,
+        61.4954
+      ],
+      "ns_per_item_min": 56.9508,
+      "ns_per_item_median": 60.0299,
+      "million_items_per_second_median": 16.658365247984754
+    },
+    {
+      "tag": "base",
+      "name": "moodycamel_implicit",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        61.6565,
+        62.0849,
+        62.326
+      ],
+      "ns_per_item_min": 61.6565,
+      "ns_per_item_median": 62.0849,
+      "million_items_per_second_median": 16.106976092415387
+    },
+    {
+      "tag": "base",
+      "name": "moodycamel_implicit",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        58.3408,
+        58.6475,
+        60.1825
+      ],
+      "ns_per_item_min": 58.3408,
+      "ns_per_item_median": 58.6475,
+      "million_items_per_second_median": 17.05102519288972
+    },
+    {
+      "tag": "base",
+      "name": "moodycamel_token",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        14.024,
+        14.5979,
+        17.6752
+      ],
+      "ns_per_item_min": 14.024,
+      "ns_per_item_median": 14.5979,
+      "million_items_per_second_median": 68.50300385671912
+    },
+    {
+      "tag": "base",
+      "name": "moodycamel_token",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        23.7329,
+        24.4053,
+        27.125
+      ],
+      "ns_per_item_min": 23.7329,
+      "ns_per_item_median": 24.4053,
+      "million_items_per_second_median": 40.974706313792495
+    },
+    {
+      "tag": "base",
+      "name": "moodycamel_token",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        9.87052,
+        10.1055,
+        10.192
+      ],
+      "ns_per_item_min": 9.87052,
+      "ns_per_item_median": 10.1055,
+      "million_items_per_second_median": 98.956014051754
+    },
+    {
+      "tag": "base",
+      "name": "moodycamel_token",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        7.91839,
+        9.14552,
+        9.43391
+      ],
+      "ns_per_item_min": 7.91839,
+      "ns_per_item_median": 9.14552,
+      "million_items_per_second_median": 109.34315380645388
+    },
+    {
+      "tag": "base",
+      "name": "moodycamel_token",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        9.04469,
+        10.3581,
+        11.0018
+      ],
+      "ns_per_item_min": 9.04469,
+      "ns_per_item_median": 10.3581,
+      "million_items_per_second_median": 96.54280225137815
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_default_implicit",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        8.88196,
+        9.16783,
+        9.20879
+      ],
+      "ns_per_item_min": 8.88196,
+      "ns_per_item_median": 9.16783,
+      "million_items_per_second_median": 109.07706621959613
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_default_implicit",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.60404,
+        1.60763,
+        1.61712
+      ],
+      "ns_per_item_min": 1.60404,
+      "ns_per_item_median": 1.60763,
+      "million_items_per_second_median": 622.0336769032676
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_default_implicit",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        1.84169,
+        1.85554,
+        1.88672
+      ],
+      "ns_per_item_min": 1.84169,
+      "ns_per_item_median": 1.85554,
+      "million_items_per_second_median": 538.926673636785
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_default_implicit",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.78282,
+        1.78545,
+        1.81997
+      ],
+      "ns_per_item_min": 1.78282,
+      "ns_per_item_median": 1.78545,
+      "million_items_per_second_median": 560.0828922680557
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_default_token",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        3.88217,
+        3.98071,
+        3.99829
+      ],
+      "ns_per_item_min": 3.88217,
+      "ns_per_item_median": 3.98071,
+      "million_items_per_second_median": 251.21146730105934
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_default_token",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.76444,
+        1.82471,
+        1.83679
+      ],
+      "ns_per_item_min": 1.76444,
+      "ns_per_item_median": 1.82471,
+      "million_items_per_second_median": 548.0322900625305
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_default_token",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        2.04578,
+        2.06722,
+        2.15593
+      ],
+      "ns_per_item_min": 2.04578,
+      "ns_per_item_median": 2.06722,
+      "million_items_per_second_median": 483.7414498698736
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_default_token",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.97906,
+        2.00192,
+        2.03252
+      ],
+      "ns_per_item_min": 1.97906,
+      "ns_per_item_median": 2.00192,
+      "million_items_per_second_median": 499.52046035805625
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_slab_implicit",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        4.26754,
+        4.33433,
+        4.45425
+      ],
+      "ns_per_item_min": 4.26754,
+      "ns_per_item_median": 4.33433,
+      "million_items_per_second_median": 230.71616605103904
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_slab_implicit",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.46948,
+        1.61529,
+        1.63942
+      ],
+      "ns_per_item_min": 1.46948,
+      "ns_per_item_median": 1.61529,
+      "million_items_per_second_median": 619.0838796748571
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_slab_implicit",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        1.74082,
+        1.809,
+        1.87816
+      ],
+      "ns_per_item_min": 1.74082,
+      "ns_per_item_median": 1.809,
+      "million_items_per_second_median": 552.791597567717
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_slab_implicit",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.67315,
+        1.7816,
+        1.83128
+      ],
+      "ns_per_item_min": 1.67315,
+      "ns_per_item_median": 1.7816,
+      "million_items_per_second_median": 561.2932195779075
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_slab_token",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        3.88792,
+        3.91513,
+        4.09329
+      ],
+      "ns_per_item_min": 3.88792,
+      "ns_per_item_median": 3.91513,
+      "million_items_per_second_median": 255.41936027667026
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_slab_token",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.51921,
+        1.76458,
+        1.78348
+      ],
+      "ns_per_item_min": 1.51921,
+      "ns_per_item_median": 1.76458,
+      "million_items_per_second_median": 566.7070917725464
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_slab_token",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        1.87765,
+        2.00391,
+        2.08929
+      ],
+      "ns_per_item_min": 1.87765,
+      "ns_per_item_median": 2.00391,
+      "million_items_per_second_median": 499.0244072837603
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_hakle_slab_token",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.91304,
+        1.99352,
+        2.03398
+      ],
+      "ns_per_item_min": 1.91304,
+      "ns_per_item_median": 1.99352,
+      "million_items_per_second_median": 501.6252658613909
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_moodycamel_implicit",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        2.347,
+        2.4105,
+        2.55325
+      ],
+      "ns_per_item_min": 2.347,
+      "ns_per_item_median": 2.4105,
+      "million_items_per_second_median": 414.8516905206389
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_moodycamel_implicit",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        2.31969,
+        2.32929,
+        2.35508
+      ],
+      "ns_per_item_min": 2.31969,
+      "ns_per_item_median": 2.32929,
+      "million_items_per_second_median": 429.31537077822
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_moodycamel_implicit",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        2.23202,
+        2.38342,
+        2.46496
+      ],
+      "ns_per_item_min": 2.23202,
+      "ns_per_item_median": 2.38342,
+      "million_items_per_second_median": 419.56516266541354
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_moodycamel_implicit",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        2.16327,
+        2.32656,
+        2.37036
+      ],
+      "ns_per_item_min": 2.16327,
+      "ns_per_item_median": 2.32656,
+      "million_items_per_second_median": 429.8191321092084
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_moodycamel_token",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        1.81633,
+        1.8605,
+        1.99067
+      ],
+      "ns_per_item_min": 1.81633,
+      "ns_per_item_median": 1.8605,
+      "million_items_per_second_median": 537.4899220639613
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_moodycamel_token",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.29581,
+        1.30133,
+        1.31167
+      ],
+      "ns_per_item_min": 1.29581,
+      "ns_per_item_median": 1.30133,
+      "million_items_per_second_median": 768.444591302744
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_moodycamel_token",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        1.51802,
+        1.52232,
+        1.58882
+      ],
+      "ns_per_item_min": 1.51802,
+      "ns_per_item_median": 1.52232,
+      "million_items_per_second_median": 656.8921120395187
+    },
+    {
+      "tag": "base",
+      "name": "producer_only_moodycamel_token",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.19967,
+        1.20709,
+        1.22174
+      ],
+      "ns_per_item_min": 1.19967,
+      "ns_per_item_median": 1.20709,
+      "million_items_per_second_median": 828.4386416920031
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_default_implicit",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        7.78188,
+        8.03875,
+        8.11917
+      ],
+      "ns_per_item_min": 7.78188,
+      "ns_per_item_median": 8.03875,
+      "million_items_per_second_median": 124.39744985227803
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_default_implicit",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        7.48979,
+        7.7999,
+        8.44688
+      ],
+      "ns_per_item_min": 7.48979,
+      "ns_per_item_median": 7.7999,
+      "million_items_per_second_median": 128.2067718816908
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_default_implicit",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        7.22667,
+        7.71974,
+        7.98328
+      ],
+      "ns_per_item_min": 7.22667,
+      "ns_per_item_median": 7.71974,
+      "million_items_per_second_median": 129.5380414366287
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_default_implicit",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        6.69656,
+        7.16563,
+        7.21812
+      ],
+      "ns_per_item_min": 6.69656,
+      "ns_per_item_median": 7.16563,
+      "million_items_per_second_median": 139.5550705241549
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_default_implicit",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        10.4252,
+        10.6789,
+        10.8603
+      ],
+      "ns_per_item_min": 10.4252,
+      "ns_per_item_median": 10.6789,
+      "million_items_per_second_median": 93.64260363895157
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_default_token",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        8.19041,
+        15.9062,
+        16.199
+      ],
+      "ns_per_item_min": 8.19041,
+      "ns_per_item_median": 15.9062,
+      "million_items_per_second_median": 62.8685669738844
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_default_token",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        10.3054,
+        10.4253,
+        10.5845
+      ],
+      "ns_per_item_min": 10.3054,
+      "ns_per_item_median": 10.4253,
+      "million_items_per_second_median": 95.92050108869769
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_default_token",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        7.16281,
+        7.26625,
+        9.06635
+      ],
+      "ns_per_item_min": 7.16281,
+      "ns_per_item_median": 7.26625,
+      "million_items_per_second_median": 137.62257010149665
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_default_token",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        5.4137,
+        7.15552,
+        7.55412
+      ],
+      "ns_per_item_min": 5.4137,
+      "ns_per_item_median": 7.15552,
+      "million_items_per_second_median": 139.75224721613523
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_default_token",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        8.64615,
+        8.86833,
+        13.7648
+      ],
+      "ns_per_item_min": 8.64615,
+      "ns_per_item_median": 8.86833,
+      "million_items_per_second_median": 112.76080163909101
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_slab_implicit",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        7.37167,
+        7.40229,
+        7.5073
+      ],
+      "ns_per_item_min": 7.37167,
+      "ns_per_item_median": 7.40229,
+      "million_items_per_second_median": 135.09332922649614
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_slab_implicit",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        7.3849,
+        7.58209,
+        7.66656
+      ],
+      "ns_per_item_min": 7.3849,
+      "ns_per_item_median": 7.58209,
+      "million_items_per_second_median": 131.88975599076244
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_slab_implicit",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        6.00307,
+        6.45963,
+        6.63078
+      ],
+      "ns_per_item_min": 6.00307,
+      "ns_per_item_median": 6.45963,
+      "million_items_per_second_median": 154.80762830069216
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_slab_implicit",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        4.64479,
+        4.81047,
+        5.48818
+      ],
+      "ns_per_item_min": 4.64479,
+      "ns_per_item_median": 4.81047,
+      "million_items_per_second_median": 207.87989531168475
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_slab_implicit",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        9.86589,
+        12.0896,
+        13.106
+      ],
+      "ns_per_item_min": 9.86589,
+      "ns_per_item_median": 12.0896,
+      "million_items_per_second_median": 82.71572260455267
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_slab_token",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        8.34729,
+        15.1731,
+        15.6742
+      ],
+      "ns_per_item_min": 8.34729,
+      "ns_per_item_median": 15.1731,
+      "million_items_per_second_median": 65.90611015547252
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_slab_token",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        9.95115,
+        10.1311,
+        10.2077
+      ],
+      "ns_per_item_min": 9.95115,
+      "ns_per_item_median": 10.1311,
+      "million_items_per_second_median": 98.70596480145295
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_slab_token",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        7.34734,
+        7.43875,
+        9.25771
+      ],
+      "ns_per_item_min": 7.34734,
+      "ns_per_item_median": 7.43875,
+      "million_items_per_second_median": 134.43118803562427
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_slab_token",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        6.46125,
+        6.60792,
+        6.89443
+      ],
+      "ns_per_item_min": 6.46125,
+      "ns_per_item_median": 6.60792,
+      "million_items_per_second_median": 151.33355125364713
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_slab_token",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        8.96849,
+        9.65167,
+        10.5554
+      ],
+      "ns_per_item_min": 8.96849,
+      "ns_per_item_median": 9.65167,
+      "million_items_per_second_median": 103.60901274080031
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_word_flags_token",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        11.8098,
+        12.446,
+        13.5573
+      ],
+      "ns_per_item_min": 11.8098,
+      "ns_per_item_median": 12.446,
+      "million_items_per_second_median": 80.34709946970915
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_word_flags_token",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        10.9725,
+        11.3747,
+        11.5884
+      ],
+      "ns_per_item_min": 10.9725,
+      "ns_per_item_median": 11.3747,
+      "million_items_per_second_median": 87.91440653379868
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_word_flags_token",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        8.09432,
+        8.83437,
+        10.0745
+      ],
+      "ns_per_item_min": 8.09432,
+      "ns_per_item_median": 8.83437,
+      "million_items_per_second_median": 113.1942628619811
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_word_flags_token",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        5.93667,
+        6.56281,
+        6.97365
+      ],
+      "ns_per_item_min": 5.93667,
+      "ns_per_item_median": 6.56281,
+      "million_items_per_second_median": 152.37375453502386
+    },
+    {
+      "tag": "opt",
+      "name": "hakle_word_flags_token",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        7.52219,
+        8.11364,
+        9.76495
+      ],
+      "ns_per_item_min": 7.52219,
+      "ns_per_item_median": 8.11364,
+      "million_items_per_second_median": 123.24924448213132
+    },
+    {
+      "tag": "opt",
+      "name": "moodycamel_implicit",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        17.7152,
+        28.039,
+        36.6617
+      ],
+      "ns_per_item_min": 17.7152,
+      "ns_per_item_median": 28.039,
+      "million_items_per_second_median": 35.664610007489564
+    },
+    {
+      "tag": "opt",
+      "name": "moodycamel_implicit",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        49.0771,
+        65.5837,
+        67.9735
+      ],
+      "ns_per_item_min": 49.0771,
+      "ns_per_item_median": 65.5837,
+      "million_items_per_second_median": 15.247691118372401
+    },
+    {
+      "tag": "opt",
+      "name": "moodycamel_implicit",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        54.6044,
+        57.8211,
+        76.0353
+      ],
+      "ns_per_item_min": 54.6044,
+      "ns_per_item_median": 57.8211,
+      "million_items_per_second_median": 17.294724590158264
+    },
+    {
+      "tag": "opt",
+      "name": "moodycamel_implicit",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        59.9052,
+        62.377,
+        62.6133
+      ],
+      "ns_per_item_min": 59.9052,
+      "ns_per_item_median": 62.377,
+      "million_items_per_second_median": 16.031550090578257
+    },
+    {
+      "tag": "opt",
+      "name": "moodycamel_implicit",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        57.6287,
+        58.606,
+        58.8433
+      ],
+      "ns_per_item_min": 57.6287,
+      "ns_per_item_median": 58.606,
+      "million_items_per_second_median": 17.063099341364364
+    },
+    {
+      "tag": "opt",
+      "name": "moodycamel_token",
+      "producers": 1,
+      "consumers": 1,
+      "samples": [
+        13.8502,
+        18.9319,
+        21.8113
+      ],
+      "ns_per_item_min": 13.8502,
+      "ns_per_item_median": 18.9319,
+      "million_items_per_second_median": 52.820900173780764
+    },
+    {
+      "tag": "opt",
+      "name": "moodycamel_token",
+      "producers": 2,
+      "consumers": 2,
+      "samples": [
+        24.4308,
+        24.8301,
+        26.0223
+      ],
+      "ns_per_item_min": 24.4308,
+      "ns_per_item_median": 24.8301,
+      "million_items_per_second_median": 40.27370006564613
+    },
+    {
+      "tag": "opt",
+      "name": "moodycamel_token",
+      "producers": 4,
+      "consumers": 4,
+      "samples": [
+        9.77115,
+        10.454,
+        10.5642
+      ],
+      "ns_per_item_min": 9.77115,
+      "ns_per_item_median": 10.454,
+      "million_items_per_second_median": 95.65716472163764
+    },
+    {
+      "tag": "opt",
+      "name": "moodycamel_token",
+      "producers": 8,
+      "consumers": 8,
+      "samples": [
+        7.66625,
+        8.44365,
+        9.87516
+      ],
+      "ns_per_item_min": 7.66625,
+      "ns_per_item_median": 8.44365,
+      "million_items_per_second_median": 118.43219460778218
+    },
+    {
+      "tag": "opt",
+      "name": "moodycamel_token",
+      "producers": 16,
+      "consumers": 16,
+      "samples": [
+        8.22594,
+        8.23599,
+        9.03641
+      ],
+      "ns_per_item_min": 8.22594,
+      "ns_per_item_median": 8.23599,
+      "million_items_per_second_median": 121.41831158124282
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_default_implicit",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        9.25225,
+        9.29967,
+        9.8185
+      ],
+      "ns_per_item_min": 9.25225,
+      "ns_per_item_median": 9.29967,
+      "million_items_per_second_median": 107.53069732581908
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_default_implicit",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.5824,
+        1.59108,
+        1.70985
+      ],
+      "ns_per_item_min": 1.5824,
+      "ns_per_item_median": 1.59108,
+      "million_items_per_second_median": 628.5039092943158
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_default_implicit",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        1.41995,
+        1.57776,
+        1.60095
+      ],
+      "ns_per_item_min": 1.41995,
+      "ns_per_item_median": 1.57776,
+      "million_items_per_second_median": 633.8099584220668
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_default_implicit",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.20219,
+        1.20738,
+        1.32695
+      ],
+      "ns_per_item_min": 1.20219,
+      "ns_per_item_median": 1.20738,
+      "million_items_per_second_median": 828.2396594278521
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_default_token",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        3.31246,
+        4.00887,
+        4.01088
+      ],
+      "ns_per_item_min": 3.31246,
+      "ns_per_item_median": 4.00887,
+      "million_items_per_second_median": 249.44685160656246
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_default_token",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.49654,
+        1.67404,
+        1.99015
+      ],
+      "ns_per_item_min": 1.49654,
+      "ns_per_item_median": 1.67404,
+      "million_items_per_second_median": 597.3572913430982
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_default_token",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        1.57297,
+        1.68802,
+        1.83459
+      ],
+      "ns_per_item_min": 1.57297,
+      "ns_per_item_median": 1.68802,
+      "million_items_per_second_median": 592.410042535041
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_default_token",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.18556,
+        1.22209,
+        1.30106
+      ],
+      "ns_per_item_min": 1.18556,
+      "ns_per_item_median": 1.22209,
+      "million_items_per_second_median": 818.2703401549804
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_slab_implicit",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        4.266,
+        4.46488,
+        4.60046
+      ],
+      "ns_per_item_min": 4.266,
+      "ns_per_item_median": 4.46488,
+      "million_items_per_second_median": 223.97018508896096
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_slab_implicit",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.5936,
+        1.59462,
+        1.63231
+      ],
+      "ns_per_item_min": 1.5936,
+      "ns_per_item_median": 1.59462,
+      "million_items_per_second_median": 627.108652845192
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_slab_implicit",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        1.47553,
+        1.52379,
+        1.60196
+      ],
+      "ns_per_item_min": 1.47553,
+      "ns_per_item_median": 1.52379,
+      "million_items_per_second_median": 656.2584083108565
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_slab_implicit",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.1858,
+        1.19882,
+        1.2531
+      ],
+      "ns_per_item_min": 1.1858,
+      "ns_per_item_median": 1.19882,
+      "million_items_per_second_median": 834.153584357952
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_slab_token",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        3.70483,
+        3.946,
+        4.14225
+      ],
+      "ns_per_item_min": 3.70483,
+      "ns_per_item_median": 3.946,
+      "million_items_per_second_median": 253.42118601115052
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_slab_token",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.55371,
+        1.77175,
+        1.78633
+      ],
+      "ns_per_item_min": 1.55371,
+      "ns_per_item_median": 1.77175,
+      "million_items_per_second_median": 564.4137152532807
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_slab_token",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        1.68558,
+        1.88648,
+        1.93596
+      ],
+      "ns_per_item_min": 1.68558,
+      "ns_per_item_median": 1.88648,
+      "million_items_per_second_median": 530.0877825367882
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_slab_token",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.38256,
+        1.42503,
+        1.47126
+      ],
+      "ns_per_item_min": 1.38256,
+      "ns_per_item_median": 1.42503,
+      "million_items_per_second_median": 701.739612499386
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_word_flags_token",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        5.28046,
+        5.41604,
+        5.78579
+      ],
+      "ns_per_item_min": 5.28046,
+      "ns_per_item_median": 5.41604,
+      "million_items_per_second_median": 184.6367456665756
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_word_flags_token",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.43298,
+        1.54002,
+        1.91275
+      ],
+      "ns_per_item_min": 1.43298,
+      "ns_per_item_median": 1.54002,
+      "million_items_per_second_median": 649.3422163348528
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_word_flags_token",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        1.54903,
+        1.58858,
+        1.6775
+      ],
+      "ns_per_item_min": 1.54903,
+      "ns_per_item_median": 1.58858,
+      "million_items_per_second_median": 629.4930063326996
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_hakle_word_flags_token",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.1748,
+        1.22676,
+        1.40957
+      ],
+      "ns_per_item_min": 1.1748,
+      "ns_per_item_median": 1.22676,
+      "million_items_per_second_median": 815.1553686132577
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_moodycamel_implicit",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        2.43012,
+        2.53604,
+        2.6035
+      ],
+      "ns_per_item_min": 2.43012,
+      "ns_per_item_median": 2.53604,
+      "million_items_per_second_median": 394.31554707339
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_moodycamel_implicit",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        2.33169,
+        2.35796,
+        2.90056
+      ],
+      "ns_per_item_min": 2.33169,
+      "ns_per_item_median": 2.35796,
+      "million_items_per_second_median": 424.09540450219686
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_moodycamel_implicit",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        2.24796,
+        2.40232,
+        2.54516
+      ],
+      "ns_per_item_min": 2.24796,
+      "ns_per_item_median": 2.40232,
+      "million_items_per_second_median": 416.2642778647308
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_moodycamel_implicit",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        2.24091,
+        2.27082,
+        2.44323
+      ],
+      "ns_per_item_min": 2.24091,
+      "ns_per_item_median": 2.27082,
+      "million_items_per_second_median": 440.36955813318536
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_moodycamel_token",
+      "producers": 1,
+      "consumers": 0,
+      "samples": [
+        1.96146,
+        1.99283,
+        2.05392
+      ],
+      "ns_per_item_min": 1.96146,
+      "ns_per_item_median": 1.99283,
+      "million_items_per_second_median": 501.79894923300026
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_moodycamel_token",
+      "producers": 4,
+      "consumers": 0,
+      "samples": [
+        1.29867,
+        1.3246,
+        1.42202
+      ],
+      "ns_per_item_min": 1.29867,
+      "ns_per_item_median": 1.3246,
+      "million_items_per_second_median": 754.9448890231013
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_moodycamel_token",
+      "producers": 8,
+      "consumers": 0,
+      "samples": [
+        1.55594,
+        1.57302,
+        1.57875
+      ],
+      "ns_per_item_min": 1.55594,
+      "ns_per_item_median": 1.57302,
+      "million_items_per_second_median": 635.7198255584798
+    },
+    {
+      "tag": "opt",
+      "name": "producer_only_moodycamel_token",
+      "producers": 16,
+      "consumers": 0,
+      "samples": [
+        1.21923,
+        1.22679,
+        1.23683
+      ],
+      "ns_per_item_min": 1.21923,
+      "ns_per_item_median": 1.22679,
+      "million_items_per_second_median": 815.1354347524841
+    }
+  ]
+}

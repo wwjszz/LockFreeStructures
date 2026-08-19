@@ -8,6 +8,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <limits>
 #if defined( ENABLE_MEMORY_LEAK_DETECTION )
 #include <cstdio>
 #endif
@@ -55,11 +56,17 @@ struct FlagsCheckPolicy;
 template <std::size_t BLOCK_SIZE>
 struct CounterCheckPolicy;
 
+template <std::size_t BLOCK_SIZE>
+struct WordFlagsCheckPolicy;
+
 template <class T, std::size_t BLOCK_SIZE>
 using HakleFlagsBlock = HakleBlock<T, BLOCK_SIZE, FlagsCheckPolicy<BLOCK_SIZE>>;
 
 template <class T, std::size_t BLOCK_SIZE>
 using HakleCounterBlock = HakleBlock<T, BLOCK_SIZE, CounterCheckPolicy<BLOCK_SIZE>>;
+
+template <class T, std::size_t BLOCK_SIZE>
+using HakleWordFlagsBlock = HakleBlock<T, BLOCK_SIZE, WordFlagsCheckPolicy<BLOCK_SIZE>>;
 
 // TODO: memory_order!!!
 template <std::size_t BLOCK_SIZE>
@@ -155,7 +162,62 @@ struct CounterCheckPolicy {
     std::atomic<std::size_t> Counter;
 };
 
-enum class BlockMethod { Flags, Counter };
+// Packed per-slot empty flags in a single machine word.  Compared with
+// FlagsCheckPolicy this removes the flag-array loop from IsEmpty() and shrinks
+// the block metadata to one atomic word.  SetEmpty becomes a read-modify-write
+// instead of a byte store, so the two policies favour different contention
+// patterns; both are kept and can be selected through the block type.
+template <std::size_t BLOCK_SIZE>
+struct WordFlagsCheckPolicy {
+    static_assert( BLOCK_SIZE > 1 && std::has_single_bit( BLOCK_SIZE ), "BLOCK_SIZE must be a power of two and greater than one" );
+    static_assert( BLOCK_SIZE <= std::numeric_limits<std::size_t>::digits, "BLOCK_SIZE does not fit in one word" );
+
+    constexpr static bool HasMeaningfulSetResult = false;
+
+    HAKLE_CPP20_CONSTEXPR ~WordFlagsCheckPolicy() = default;
+
+    HAKLE_NODISCARD HAKLE_CPP20_CONSTEXPR bool IsEmpty() const {
+        if ( Flags.load( std::memory_order_relaxed ) == FullMask ) {
+            std::atomic_thread_fence( std::memory_order_acquire );
+            return true;
+        }
+        return false;
+    }
+
+    HAKLE_CPP20_CONSTEXPR bool SetEmpty( std::size_t Index ) {
+        Flags.fetch_or( Bit( Index ), std::memory_order_release );
+        return false;
+    }
+
+    HAKLE_CPP20_CONSTEXPR bool SetSomeEmpty( std::size_t Index, std::size_t Count ) {
+        if ( Count != 0 ) {
+            const std::size_t Mask = Count == BLOCK_SIZE ? FullMask : ( ( std::size_t{ 1 } << Count ) - 1 ) << Index;
+            Flags.fetch_or( Mask, std::memory_order_release );
+        }
+        return false;
+    }
+
+    HAKLE_CPP20_CONSTEXPR void SetAllEmpty() { Flags.store( FullMask, std::memory_order_release ); }
+
+    HAKLE_CPP20_CONSTEXPR void Reset() { Flags.store( 0, std::memory_order_release ); }
+
+#if defined( ENABLE_MEMORY_LEAK_DETECTION )
+    void PrintPolicy() {
+        printf( "===PrintPolicy BLOCK_SIZE: %llu===\n", BLOCK_SIZE );
+        printf( "WordFlags: %llx\n", static_cast<unsigned long long>( Flags.load() ) );
+    }
+#endif
+
+private:
+    constexpr static std::size_t FullMask = BLOCK_SIZE == std::numeric_limits<std::size_t>::digits ? ~std::size_t{ 0 } : ( ( std::size_t{ 1 } << BLOCK_SIZE ) - 1 );
+
+    constexpr static std::size_t Bit( std::size_t Index ) noexcept { return std::size_t{ 1 } << Index; }
+
+public:
+    std::atomic<std::size_t> Flags{ 0 };
+};
+
+enum class BlockMethod { Flags, Counter, WordFlags };
 
 template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsPolicy ) Policy>
 struct HakleBlock : FreeListNode<HakleBlock<T, BLOCK_SIZE, Policy>>, Policy {

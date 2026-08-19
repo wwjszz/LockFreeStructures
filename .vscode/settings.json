@@ -1,0 +1,10 @@
+{
+  "clangd.path": "/opt/homebrew/opt/llvm/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--clang-tidy",
+    "--completion-style=detailed"
+  ],
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "cmake.buildDirectory": "${workspaceFolder}/build"
+}

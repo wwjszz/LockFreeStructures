@@ -1,0 +1,245 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="1080" viewBox="0 0 1320 1080" role="img" aria-labelledby="chart-title chart-desc">
+<title id="chart-title">ConcurrentQueue optimization ablation · README workloads</title>
+<desc id="chart-desc">Three throughput plots compare the original Hakle queue, two optimization groups, all optimizations, and moodycamel using the README implicit, token, and token bulk workloads.</desc>
+<style>
+text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #24292f; }
+.title { font-size: 22px; font-weight: 500; }
+.panel-title { font-size: 16px; font-weight: 500; }
+.subtitle, .tick, .legend { font-size: 12px; fill: #57606a; }
+.axis-label { font-size: 13px; fill: #24292f; }
+.grid { stroke: #d0d7de; stroke-width: 1; }
+.frame { fill: none; stroke: #8c959f; stroke-width: 1; }
+.series { fill: none; stroke-width: 2.3; stroke-linejoin: round; stroke-linecap: round; }
+@media (prefers-color-scheme: dark) {
+  text, .axis-label { fill: #f0f6fc; }
+  .subtitle, .tick, .legend { fill: #b1bac4; }
+  .grid { stroke: #30363d; }
+  .frame { stroke: #8c959f; }
+}
+</style>
+<text class="title" x="92" y="34">ConcurrentQueue optimization ablation · README workloads</text>
+<text class="subtitle" x="92" y="58">Apple M5 Pro · clang version 21.1.8 · median of 3 runs · ≥ 0.25s timed per sample</text>
+<text class="panel-title" x="92" y="98">Hakle implicit / moodycamel implicit</text>
+<line class="grid" x1="92" y1="342.0" x2="930" y2="342.0"/>
+<text class="tick" x="81" y="346.0" text-anchor="end">0</text>
+<line class="grid" x1="92" y1="296.8" x2="930" y2="296.8"/>
+<text class="tick" x="81" y="300.8" text-anchor="end">40</text>
+<line class="grid" x1="92" y1="251.6" x2="930" y2="251.6"/>
+<text class="tick" x="81" y="255.6" text-anchor="end">80</text>
+<line class="grid" x1="92" y1="206.4" x2="930" y2="206.4"/>
+<text class="tick" x="81" y="210.4" text-anchor="end">120</text>
+<line class="grid" x1="92" y1="161.2" x2="930" y2="161.2"/>
+<text class="tick" x="81" y="165.2" text-anchor="end">160</text>
+<line class="grid" x1="92" y1="116.0" x2="930" y2="116.0"/>
+<text class="tick" x="81" y="120.0" text-anchor="end">200</text>
+<rect class="frame" x="92" y="116" width="838" height="226"/>
+<text class="tick" x="92.0" y="363" text-anchor="middle">1P/1C</text>
+<text class="tick" x="211.7" y="363" text-anchor="middle">2P/2C</text>
+<text class="tick" x="331.4" y="363" text-anchor="middle">4P/4C</text>
+<text class="tick" x="451.1" y="363" text-anchor="middle">8P/8C</text>
+<text class="tick" x="570.9" y="363" text-anchor="middle">12P/12C</text>
+<text class="tick" x="690.6" y="363" text-anchor="middle">16P/16C</text>
+<text class="tick" x="810.3" y="363" text-anchor="middle">20P/20C</text>
+<text class="tick" x="930.0" y="363" text-anchor="middle">24P/24C</text>
+<polyline class="series" stroke="#6E7781" stroke-dasharray="5 4" points="92.0,204.4 211.7,319.1 331.4,314.5 451.1,316.9 570.9,314.4 690.6,312.9 810.3,311.4 930.0,311.8"/>
+<circle cx="92.0" cy="204.4" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle implicit / moodycamel implicit: 1P/1C · 121.79 M items/s</title></circle>
+<circle cx="211.7" cy="319.1" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle implicit / moodycamel implicit: 2P/2C · 20.26 M items/s</title></circle>
+<circle cx="331.4" cy="314.5" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle implicit / moodycamel implicit: 4P/4C · 24.35 M items/s</title></circle>
+<circle cx="451.1" cy="316.9" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle implicit / moodycamel implicit: 8P/8C · 22.19 M items/s</title></circle>
+<circle cx="570.9" cy="314.4" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle implicit / moodycamel implicit: 12P/12C · 24.45 M items/s</title></circle>
+<circle cx="690.6" cy="312.9" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle implicit / moodycamel implicit: 16P/16C · 25.77 M items/s</title></circle>
+<circle cx="810.3" cy="311.4" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle implicit / moodycamel implicit: 20P/20C · 27.12 M items/s</title></circle>
+<circle cx="930.0" cy="311.8" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle implicit / moodycamel implicit: 24P/24C · 26.69 M items/s</title></circle>
+<polyline class="series" stroke="#0072B2" points="92.0,275.2 211.7,302.5 331.4,236.9 451.1,191.2 570.9,195.7 690.6,231.8 810.3,229.2 930.0,237.8"/>
+<rect x="87.5" y="270.7" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle implicit / moodycamel implicit: 1P/1C · 59.12 M items/s</title></rect>
+<rect x="207.2" y="298.0" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle implicit / moodycamel implicit: 2P/2C · 34.94 M items/s</title></rect>
+<rect x="326.9" y="232.4" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle implicit / moodycamel implicit: 4P/4C · 93.00 M items/s</title></rect>
+<rect x="446.6" y="186.7" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle implicit / moodycamel implicit: 8P/8C · 133.44 M items/s</title></rect>
+<rect x="566.4" y="191.2" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle implicit / moodycamel implicit: 12P/12C · 129.43 M items/s</title></rect>
+<rect x="686.1" y="227.3" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle implicit / moodycamel implicit: 16P/16C · 97.51 M items/s</title></rect>
+<rect x="805.8" y="224.7" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle implicit / moodycamel implicit: 20P/20C · 99.85 M items/s</title></rect>
+<rect x="925.5" y="233.3" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle implicit / moodycamel implicit: 24P/24C · 92.18 M items/s</title></rect>
+<polyline class="series" stroke="#E69F00" points="92.0,204.9 211.7,319.5 331.4,314.2 451.1,317.1 570.9,315.1 690.6,313.8 810.3,312.3 930.0,312.3"/>
+<polygon points="92.0,199.4 87.0,208.9 97.0,208.9" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle implicit / moodycamel implicit: 1P/1C · 121.37 M items/s</title></polygon>
+<polygon points="211.7,314.0 206.7,323.5 216.7,323.5" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle implicit / moodycamel implicit: 2P/2C · 19.88 M items/s</title></polygon>
+<polygon points="331.4,308.7 326.4,318.2 336.4,318.2" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle implicit / moodycamel implicit: 4P/4C · 24.64 M items/s</title></polygon>
+<polygon points="451.1,311.6 446.1,321.1 456.1,321.1" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle implicit / moodycamel implicit: 8P/8C · 22.06 M items/s</title></polygon>
+<polygon points="570.9,309.6 565.9,319.1 575.9,319.1" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle implicit / moodycamel implicit: 12P/12C · 23.78 M items/s</title></polygon>
+<polygon points="690.6,308.3 685.6,317.8 695.6,317.8" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle implicit / moodycamel implicit: 16P/16C · 24.94 M items/s</title></polygon>
+<polygon points="810.3,306.8 805.3,316.3 815.3,316.3" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle implicit / moodycamel implicit: 20P/20C · 26.30 M items/s</title></polygon>
+<polygon points="930.0,306.8 925.0,316.3 935.0,316.3" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle implicit / moodycamel implicit: 24P/24C · 26.29 M items/s</title></polygon>
+<polyline class="series" stroke="#009E73" points="92.0,274.2 211.7,307.1 331.4,240.1 451.1,185.9 570.9,196.9 690.6,230.8 810.3,225.0 930.0,239.0"/>
+<polygon points="92.0,268.7 86.5,274.2 92.0,279.7 97.5,274.2" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle implicit / moodycamel implicit: 1P/1C · 59.99 M items/s</title></polygon>
+<polygon points="211.7,301.6 206.2,307.1 211.7,312.6 217.2,307.1" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle implicit / moodycamel implicit: 2P/2C · 30.87 M items/s</title></polygon>
+<polygon points="331.4,234.6 325.9,240.1 331.4,245.6 336.9,240.1" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle implicit / moodycamel implicit: 4P/4C · 90.19 M items/s</title></polygon>
+<polygon points="451.1,180.4 445.6,185.9 451.1,191.4 456.6,185.9" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle implicit / moodycamel implicit: 8P/8C · 138.11 M items/s</title></polygon>
+<polygon points="570.9,191.4 565.4,196.9 570.9,202.4 576.4,196.9" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle implicit / moodycamel implicit: 12P/12C · 128.45 M items/s</title></polygon>
+<polygon points="690.6,225.3 685.1,230.8 690.6,236.3 696.1,230.8" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle implicit / moodycamel implicit: 16P/16C · 98.39 M items/s</title></polygon>
+<polygon points="810.3,219.5 804.8,225.0 810.3,230.5 815.8,225.0" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle implicit / moodycamel implicit: 20P/20C · 103.52 M items/s</title></polygon>
+<polygon points="930.0,233.5 924.5,239.0 930.0,244.5 935.5,239.0" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle implicit / moodycamel implicit: 24P/24C · 91.13 M items/s</title></polygon>
+<polyline class="series" stroke="#D55E00" stroke-dasharray="5 4" points="92.0,283.6 211.7,321.5 331.4,323.2 451.1,324.6 570.9,323.2 690.6,323.0 810.3,322.4 930.0,323.4"/>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle implicit / moodycamel implicit: 1P/1C · 51.66 M items/s</title><line x1="87.5" y1="279.1" x2="96.5" y2="288.1"/><line x1="87.5" y1="288.1" x2="96.5" y2="279.1"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle implicit / moodycamel implicit: 2P/2C · 18.18 M items/s</title><line x1="207.2" y1="317.0" x2="216.2" y2="326.0"/><line x1="207.2" y1="326.0" x2="216.2" y2="317.0"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle implicit / moodycamel implicit: 4P/4C · 16.66 M items/s</title><line x1="326.9" y1="318.7" x2="335.9" y2="327.7"/><line x1="326.9" y1="327.7" x2="335.9" y2="318.7"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle implicit / moodycamel implicit: 8P/8C · 15.43 M items/s</title><line x1="446.6" y1="320.1" x2="455.6" y2="329.1"/><line x1="446.6" y1="329.1" x2="455.6" y2="320.1"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle implicit / moodycamel implicit: 12P/12C · 16.63 M items/s</title><line x1="566.4" y1="318.7" x2="575.4" y2="327.7"/><line x1="566.4" y1="327.7" x2="575.4" y2="318.7"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle implicit / moodycamel implicit: 16P/16C · 16.79 M items/s</title><line x1="686.1" y1="318.5" x2="695.1" y2="327.5"/><line x1="686.1" y1="327.5" x2="695.1" y2="318.5"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle implicit / moodycamel implicit: 20P/20C · 17.34 M items/s</title><line x1="805.8" y1="317.9" x2="814.8" y2="326.9"/><line x1="805.8" y1="326.9" x2="814.8" y2="317.9"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle implicit / moodycamel implicit: 24P/24C · 16.50 M items/s</title><line x1="925.5" y1="318.9" x2="934.5" y2="327.9"/><line x1="925.5" y1="327.9" x2="934.5" y2="318.9"/></g>
+<text class="axis-label" x="511.0" y="390" text-anchor="middle">Producer / consumer threads</text>
+<text class="axis-label" transform="translate(23 229.0) rotate(-90)" text-anchor="middle">Throughput (million items/s)</text>
+<text class="panel-title" x="92" y="412">Hakle token / moodycamel token</text>
+<line class="grid" x1="92" y1="656.0" x2="930" y2="656.0"/>
+<text class="tick" x="81" y="660.0" text-anchor="end">0</text>
+<line class="grid" x1="92" y1="610.8" x2="930" y2="610.8"/>
+<text class="tick" x="81" y="614.8" text-anchor="end">40</text>
+<line class="grid" x1="92" y1="565.6" x2="930" y2="565.6"/>
+<text class="tick" x="81" y="569.6" text-anchor="end">80</text>
+<line class="grid" x1="92" y1="520.4" x2="930" y2="520.4"/>
+<text class="tick" x="81" y="524.4" text-anchor="end">120</text>
+<line class="grid" x1="92" y1="475.2" x2="930" y2="475.2"/>
+<text class="tick" x="81" y="479.2" text-anchor="end">160</text>
+<line class="grid" x1="92" y1="430.0" x2="930" y2="430.0"/>
+<text class="tick" x="81" y="434.0" text-anchor="end">200</text>
+<rect class="frame" x="92" y="430" width="838" height="226"/>
+<text class="tick" x="92.0" y="677" text-anchor="middle">1P/1C</text>
+<text class="tick" x="211.7" y="677" text-anchor="middle">2P/2C</text>
+<text class="tick" x="331.4" y="677" text-anchor="middle">4P/4C</text>
+<text class="tick" x="451.1" y="677" text-anchor="middle">8P/8C</text>
+<text class="tick" x="570.9" y="677" text-anchor="middle">12P/12C</text>
+<text class="tick" x="690.6" y="677" text-anchor="middle">16P/16C</text>
+<text class="tick" x="810.3" y="677" text-anchor="middle">20P/20C</text>
+<text class="tick" x="930.0" y="677" text-anchor="middle">24P/24C</text>
+<polyline class="series" stroke="#6E7781" stroke-dasharray="5 4" points="92.0,530.5 211.7,600.4 331.4,555.9 451.1,541.3 570.9,533.9 690.6,549.4 810.3,537.8 930.0,542.6"/>
+<circle cx="92.0" cy="530.5" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token / moodycamel token: 1P/1C · 111.07 M items/s</title></circle>
+<circle cx="211.7" cy="600.4" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token / moodycamel token: 2P/2C · 49.19 M items/s</title></circle>
+<circle cx="331.4" cy="555.9" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token / moodycamel token: 4P/4C · 88.56 M items/s</title></circle>
+<circle cx="451.1" cy="541.3" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token / moodycamel token: 8P/8C · 101.51 M items/s</title></circle>
+<circle cx="570.9" cy="533.9" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token / moodycamel token: 12P/12C · 108.07 M items/s</title></circle>
+<circle cx="690.6" cy="549.4" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token / moodycamel token: 16P/16C · 94.33 M items/s</title></circle>
+<circle cx="810.3" cy="537.8" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token / moodycamel token: 20P/20C · 104.60 M items/s</title></circle>
+<circle cx="930.0" cy="542.6" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token / moodycamel token: 24P/24C · 100.33 M items/s</title></circle>
+<polyline class="series" stroke="#0072B2" points="92.0,541.7 211.7,600.9 331.4,541.6 451.1,528.1 570.9,525.3 690.6,555.1 810.3,536.3 930.0,543.0"/>
+<rect x="87.5" y="537.2" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token / moodycamel token: 1P/1C · 101.17 M items/s</title></rect>
+<rect x="207.2" y="596.4" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token / moodycamel token: 2P/2C · 48.80 M items/s</title></rect>
+<rect x="326.9" y="537.1" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token / moodycamel token: 4P/4C · 101.22 M items/s</title></rect>
+<rect x="446.6" y="523.6" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token / moodycamel token: 8P/8C · 113.19 M items/s</title></rect>
+<rect x="566.4" y="520.8" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token / moodycamel token: 12P/12C · 115.62 M items/s</title></rect>
+<rect x="686.1" y="550.6" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token / moodycamel token: 16P/16C · 89.31 M items/s</title></rect>
+<rect x="805.8" y="531.8" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token / moodycamel token: 20P/20C · 105.94 M items/s</title></rect>
+<rect x="925.5" y="538.5" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token / moodycamel token: 24P/24C · 99.96 M items/s</title></rect>
+<polyline class="series" stroke="#E69F00" points="92.0,526.7 211.7,607.8 331.4,540.8 451.1,533.9 570.9,519.4 690.6,550.3 810.3,535.9 930.0,541.0"/>
+<polygon points="92.0,521.2 87.0,530.7 97.0,530.7" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token / moodycamel token: 1P/1C · 114.46 M items/s</title></polygon>
+<polygon points="211.7,602.3 206.7,611.8 216.7,611.8" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token / moodycamel token: 2P/2C · 42.63 M items/s</title></polygon>
+<polygon points="331.4,535.3 326.4,544.8 336.4,544.8" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token / moodycamel token: 4P/4C · 101.95 M items/s</title></polygon>
+<polygon points="451.1,528.4 446.1,537.9 456.1,537.9" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token / moodycamel token: 8P/8C · 108.09 M items/s</title></polygon>
+<polygon points="570.9,513.9 565.9,523.4 575.9,523.4" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token / moodycamel token: 12P/12C · 120.90 M items/s</title></polygon>
+<polygon points="690.6,544.8 685.6,554.3 695.6,554.3" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token / moodycamel token: 16P/16C · 93.52 M items/s</title></polygon>
+<polygon points="810.3,530.4 805.3,539.9 815.3,539.9" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token / moodycamel token: 20P/20C · 106.24 M items/s</title></polygon>
+<polygon points="930.0,535.5 925.0,545.0 935.0,545.0" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token / moodycamel token: 24P/24C · 101.79 M items/s</title></polygon>
+<polyline class="series" stroke="#009E73" points="92.0,527.0 211.7,603.6 331.4,537.1 451.1,533.3 570.9,523.8 690.6,554.9 810.3,539.0 930.0,538.0"/>
+<polygon points="92.0,521.5 86.5,527.0 92.0,532.5 97.5,527.0" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token / moodycamel token: 1P/1C · 114.13 M items/s</title></polygon>
+<polygon points="211.7,598.1 206.2,603.6 211.7,609.1 217.2,603.6" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token / moodycamel token: 2P/2C · 46.37 M items/s</title></polygon>
+<polygon points="331.4,531.6 325.9,537.1 331.4,542.6 336.9,537.1" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token / moodycamel token: 4P/4C · 105.22 M items/s</title></polygon>
+<polygon points="451.1,527.8 445.6,533.3 451.1,538.8 456.6,533.3" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token / moodycamel token: 8P/8C · 108.59 M items/s</title></polygon>
+<polygon points="570.9,518.3 565.4,523.8 570.9,529.3 576.4,523.8" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token / moodycamel token: 12P/12C · 117.02 M items/s</title></polygon>
+<polygon points="690.6,549.4 685.1,554.9 690.6,560.4 696.1,554.9" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token / moodycamel token: 16P/16C · 89.46 M items/s</title></polygon>
+<polygon points="810.3,533.5 804.8,539.0 810.3,544.5 815.8,539.0" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token / moodycamel token: 20P/20C · 103.54 M items/s</title></polygon>
+<polygon points="930.0,532.5 924.5,538.0 930.0,543.5 935.5,538.0" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token / moodycamel token: 24P/24C · 104.41 M items/s</title></polygon>
+<polyline class="series" stroke="#D55E00" stroke-dasharray="5 4" points="92.0,582.5 211.7,610.1 331.4,559.5 451.1,540.6 570.9,523.0 690.6,551.7 810.3,537.3 930.0,540.6"/>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token / moodycamel token: 1P/1C · 65.08 M items/s</title><line x1="87.5" y1="578.0" x2="96.5" y2="587.0"/><line x1="87.5" y1="587.0" x2="96.5" y2="578.0"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token / moodycamel token: 2P/2C · 40.63 M items/s</title><line x1="207.2" y1="605.6" x2="216.2" y2="614.6"/><line x1="207.2" y1="614.6" x2="216.2" y2="605.6"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token / moodycamel token: 4P/4C · 85.38 M items/s</title><line x1="326.9" y1="555.0" x2="335.9" y2="564.0"/><line x1="326.9" y1="564.0" x2="335.9" y2="555.0"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token / moodycamel token: 8P/8C · 102.15 M items/s</title><line x1="446.6" y1="536.1" x2="455.6" y2="545.1"/><line x1="446.6" y1="545.1" x2="455.6" y2="536.1"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token / moodycamel token: 12P/12C · 117.72 M items/s</title><line x1="566.4" y1="518.5" x2="575.4" y2="527.5"/><line x1="566.4" y1="527.5" x2="575.4" y2="518.5"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token / moodycamel token: 16P/16C · 92.29 M items/s</title><line x1="686.1" y1="547.2" x2="695.1" y2="556.2"/><line x1="686.1" y1="556.2" x2="695.1" y2="547.2"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token / moodycamel token: 20P/20C · 105.05 M items/s</title><line x1="805.8" y1="532.8" x2="814.8" y2="541.8"/><line x1="805.8" y1="541.8" x2="814.8" y2="532.8"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token / moodycamel token: 24P/24C · 102.13 M items/s</title><line x1="925.5" y1="536.1" x2="934.5" y2="545.1"/><line x1="925.5" y1="545.1" x2="934.5" y2="536.1"/></g>
+<text class="axis-label" x="511.0" y="704" text-anchor="middle">Producer / consumer threads</text>
+<text class="axis-label" transform="translate(23 543.0) rotate(-90)" text-anchor="middle">Throughput (million items/s)</text>
+<text class="panel-title" x="92" y="726">Hakle token bulk / moodycamel token bulk · 64 items</text>
+<line class="grid" x1="92" y1="970.0" x2="930" y2="970.0"/>
+<text class="tick" x="81" y="974.0" text-anchor="end">0</text>
+<line class="grid" x1="92" y1="924.8" x2="930" y2="924.8"/>
+<text class="tick" x="81" y="928.8" text-anchor="end">200</text>
+<line class="grid" x1="92" y1="879.6" x2="930" y2="879.6"/>
+<text class="tick" x="81" y="883.6" text-anchor="end">400</text>
+<line class="grid" x1="92" y1="834.4" x2="930" y2="834.4"/>
+<text class="tick" x="81" y="838.4" text-anchor="end">600</text>
+<line class="grid" x1="92" y1="789.2" x2="930" y2="789.2"/>
+<text class="tick" x="81" y="793.2" text-anchor="end">800</text>
+<line class="grid" x1="92" y1="744.0" x2="930" y2="744.0"/>
+<text class="tick" x="81" y="748.0" text-anchor="end">1000</text>
+<rect class="frame" x="92" y="744" width="838" height="226"/>
+<text class="tick" x="92.0" y="991" text-anchor="middle">1P/1C</text>
+<text class="tick" x="211.7" y="991" text-anchor="middle">2P/2C</text>
+<text class="tick" x="331.4" y="991" text-anchor="middle">4P/4C</text>
+<text class="tick" x="451.1" y="991" text-anchor="middle">8P/8C</text>
+<text class="tick" x="570.9" y="991" text-anchor="middle">12P/12C</text>
+<text class="tick" x="690.6" y="991" text-anchor="middle">16P/16C</text>
+<text class="tick" x="810.3" y="991" text-anchor="middle">20P/20C</text>
+<text class="tick" x="930.0" y="991" text-anchor="middle">24P/24C</text>
+<polyline class="series" stroke="#6E7781" stroke-dasharray="5 4" points="92.0,910.8 211.7,867.6 331.4,833.0 451.1,804.9 570.9,811.9 690.6,806.4 810.3,806.9 930.0,802.9"/>
+<circle cx="92.0" cy="910.8" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token bulk / moodycamel token bulk · 64 items: 1P/1C · 262.16 M items/s</title></circle>
+<circle cx="211.7" cy="867.6" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token bulk / moodycamel token bulk · 64 items: 2P/2C · 453.18 M items/s</title></circle>
+<circle cx="331.4" cy="833.0" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token bulk / moodycamel token bulk · 64 items: 4P/4C · 606.25 M items/s</title></circle>
+<circle cx="451.1" cy="804.9" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token bulk / moodycamel token bulk · 64 items: 8P/8C · 730.68 M items/s</title></circle>
+<circle cx="570.9" cy="811.9" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token bulk / moodycamel token bulk · 64 items: 12P/12C · 699.37 M items/s</title></circle>
+<circle cx="690.6" cy="806.4" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token bulk / moodycamel token bulk · 64 items: 16P/16C · 723.73 M items/s</title></circle>
+<circle cx="810.3" cy="806.9" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token bulk / moodycamel token bulk · 64 items: 20P/20C · 721.69 M items/s</title></circle>
+<circle cx="930.0" cy="802.9" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle · Hakle token bulk / moodycamel token bulk · 64 items: 24P/24C · 739.60 M items/s</title></circle>
+<polyline class="series" stroke="#0072B2" points="92.0,909.9 211.7,867.4 331.4,834.5 451.1,804.2 570.9,812.7 690.6,803.8 810.3,809.9 930.0,801.8"/>
+<rect x="87.5" y="905.4" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token bulk / moodycamel token bulk · 64 items: 1P/1C · 266.11 M items/s</title></rect>
+<rect x="207.2" y="862.9" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token bulk / moodycamel token bulk · 64 items: 2P/2C · 454.10 M items/s</title></rect>
+<rect x="326.9" y="830.0" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token bulk / moodycamel token bulk · 64 items: 4P/4C · 599.51 M items/s</title></rect>
+<rect x="446.6" y="799.7" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token bulk / moodycamel token bulk · 64 items: 8P/8C · 733.78 M items/s</title></rect>
+<rect x="566.4" y="808.2" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token bulk / moodycamel token bulk · 64 items: 12P/12C · 695.94 M items/s</title></rect>
+<rect x="686.1" y="799.3" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token bulk / moodycamel token bulk · 64 items: 16P/16C · 735.25 M items/s</title></rect>
+<rect x="805.8" y="805.4" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token bulk / moodycamel token bulk · 64 items: 20P/20C · 708.34 M items/s</title></rect>
+<rect x="925.5" y="797.3" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache · Hakle token bulk / moodycamel token bulk · 64 items: 24P/24C · 744.32 M items/s</title></rect>
+<polyline class="series" stroke="#E69F00" points="92.0,896.2 211.7,852.1 331.4,831.0 451.1,802.1 570.9,813.0 690.6,804.4 810.3,808.5 930.0,805.0"/>
+<polygon points="92.0,890.7 87.0,900.2 97.0,900.2" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token bulk / moodycamel token bulk · 64 items: 1P/1C · 326.69 M items/s</title></polygon>
+<polygon points="211.7,846.6 206.7,856.1 216.7,856.1" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token bulk / moodycamel token bulk · 64 items: 2P/2C · 521.77 M items/s</title></polygon>
+<polygon points="331.4,825.5 326.4,835.0 336.4,835.0" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token bulk / moodycamel token bulk · 64 items: 4P/4C · 614.87 M items/s</title></polygon>
+<polygon points="451.1,796.6 446.1,806.1 456.1,806.1" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token bulk / moodycamel token bulk · 64 items: 8P/8C · 742.78 M items/s</title></polygon>
+<polygon points="570.9,807.5 565.9,817.0 575.9,817.0" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token bulk / moodycamel token bulk · 64 items: 12P/12C · 694.79 M items/s</title></polygon>
+<polygon points="690.6,798.9 685.6,808.4 695.6,808.4" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token bulk / moodycamel token bulk · 64 items: 16P/16C · 732.70 M items/s</title></polygon>
+<polygon points="810.3,803.0 805.3,812.5 815.3,812.5" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token bulk / moodycamel token bulk · 64 items: 20P/20C · 714.59 M items/s</title></polygon>
+<polygon points="930.0,799.5 925.0,809.0 935.0,809.0" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags · Hakle token bulk / moodycamel token bulk · 64 items: 24P/24C · 729.91 M items/s</title></polygon>
+<polyline class="series" stroke="#009E73" points="92.0,896.6 211.7,851.5 331.4,826.8 451.1,801.6 570.9,813.8 690.6,802.7 810.3,808.1 930.0,803.0"/>
+<polygon points="92.0,891.1 86.5,896.6 92.0,902.1 97.5,896.6" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token bulk / moodycamel token bulk · 64 items: 1P/1C · 324.94 M items/s</title></polygon>
+<polygon points="211.7,846.0 206.2,851.5 211.7,857.0 217.2,851.5" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token bulk / moodycamel token bulk · 64 items: 2P/2C · 524.47 M items/s</title></polygon>
+<polygon points="331.4,821.3 325.9,826.8 331.4,832.3 336.9,826.8" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token bulk / moodycamel token bulk · 64 items: 4P/4C · 633.85 M items/s</title></polygon>
+<polygon points="451.1,796.1 445.6,801.6 451.1,807.1 456.6,801.6" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token bulk / moodycamel token bulk · 64 items: 8P/8C · 745.24 M items/s</title></polygon>
+<polygon points="570.9,808.3 565.4,813.8 570.9,819.3 576.4,813.8" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token bulk / moodycamel token bulk · 64 items: 12P/12C · 691.14 M items/s</title></polygon>
+<polygon points="690.6,797.2 685.1,802.7 690.6,808.2 696.1,802.7" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token bulk / moodycamel token bulk · 64 items: 16P/16C · 740.29 M items/s</title></polygon>
+<polygon points="810.3,802.6 804.8,808.1 810.3,813.6 815.8,808.1" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token bulk / moodycamel token bulk · 64 items: 20P/20C · 716.48 M items/s</title></polygon>
+<polygon points="930.0,797.5 924.5,803.0 930.0,808.5 935.5,803.0" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations · Hakle token bulk / moodycamel token bulk · 64 items: 24P/24C · 738.82 M items/s</title></polygon>
+<polyline class="series" stroke="#D55E00" stroke-dasharray="5 4" points="92.0,902.8 211.7,856.8 331.4,816.2 451.1,778.6 570.9,791.7 690.6,795.6 810.3,787.9 930.0,796.8"/>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token bulk / moodycamel token bulk · 64 items: 1P/1C · 297.47 M items/s</title><line x1="87.5" y1="898.3" x2="96.5" y2="907.3"/><line x1="87.5" y1="907.3" x2="96.5" y2="898.3"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token bulk / moodycamel token bulk · 64 items: 2P/2C · 500.72 M items/s</title><line x1="207.2" y1="852.3" x2="216.2" y2="861.3"/><line x1="207.2" y1="861.3" x2="216.2" y2="852.3"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token bulk / moodycamel token bulk · 64 items: 4P/4C · 680.43 M items/s</title><line x1="326.9" y1="811.7" x2="335.9" y2="820.7"/><line x1="326.9" y1="820.7" x2="335.9" y2="811.7"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token bulk / moodycamel token bulk · 64 items: 8P/8C · 846.97 M items/s</title><line x1="446.6" y1="774.1" x2="455.6" y2="783.1"/><line x1="446.6" y1="783.1" x2="455.6" y2="774.1"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token bulk / moodycamel token bulk · 64 items: 12P/12C · 789.07 M items/s</title><line x1="566.4" y1="787.2" x2="575.4" y2="796.2"/><line x1="566.4" y1="796.2" x2="575.4" y2="787.2"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token bulk / moodycamel token bulk · 64 items: 16P/16C · 771.70 M items/s</title><line x1="686.1" y1="791.1" x2="695.1" y2="800.1"/><line x1="686.1" y1="800.1" x2="695.1" y2="791.1"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token bulk / moodycamel token bulk · 64 items: 20P/20C · 805.97 M items/s</title><line x1="805.8" y1="783.4" x2="814.8" y2="792.4"/><line x1="805.8" y1="792.4" x2="814.8" y2="783.4"/></g>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel · Hakle token bulk / moodycamel token bulk · 64 items: 24P/24C · 766.49 M items/s</title><line x1="925.5" y1="792.3" x2="934.5" y2="801.3"/><line x1="925.5" y1="801.3" x2="934.5" y2="792.3"/></g>
+<text class="axis-label" x="511.0" y="1018" text-anchor="middle">Producer / consumer threads</text>
+<text class="axis-label" transform="translate(23 857.0) rotate(-90)" text-anchor="middle">Throughput (million items/s)</text>
+<line x1="972" y1="132" x2="1004" y2="132" stroke="#6E7781" stroke-width="2.3" stroke-dasharray="5 4"/>
+<circle cx="988.0" cy="132.0" r="4.5" fill="#6E7781" stroke="white" stroke-width="1.2"><title>Original Hakle</title></circle>
+<text class="legend" x="1015" y="136">Original Hakle</text>
+<line x1="972" y1="182" x2="1004" y2="182" stroke="#0072B2" stroke-width="2.3"/>
+<rect x="983.5" y="177.5" width="9" height="9" fill="#0072B2" stroke="white" stroke-width="1.2"><title>Optimization 1 · consumer cache</title></rect>
+<text class="legend" x="1015" y="186">Optimization 1 · consumer cache</text>
+<line x1="972" y1="232" x2="1004" y2="232" stroke="#E69F00" stroke-width="2.3"/>
+<polygon points="988.0,226.5 983.0,236.0 993.0,236.0" fill="#E69F00" stroke="white" stroke-width="1.2"><title>Optimization 2 · direct dispatch + word flags</title></polygon>
+<text class="legend" x="1015" y="236">Optimization 2 · direct dispatch + word flags</text>
+<line x1="972" y1="282" x2="1004" y2="282" stroke="#009E73" stroke-width="2.3"/>
+<polygon points="988.0,276.5 982.5,282.0 988.0,287.5 993.5,282.0" fill="#009E73" stroke="white" stroke-width="1.2"><title>All optimizations</title></polygon>
+<text class="legend" x="1015" y="286">All optimizations</text>
+<line x1="972" y1="332" x2="1004" y2="332" stroke="#D55E00" stroke-width="2.3" stroke-dasharray="5 4"/>
+<g stroke="#D55E00" stroke-width="2.3"><title>moodycamel</title><line x1="983.5" y1="327.5" x2="992.5" y2="336.5"/><line x1="983.5" y1="336.5" x2="992.5" y2="327.5"/></g>
+<text class="legend" x="1015" y="336">moodycamel</text>
+<text class="subtitle" x="92" y="1062">Equal preallocated block count · README thread matrix · validated item count and checksum</text>
+</svg>

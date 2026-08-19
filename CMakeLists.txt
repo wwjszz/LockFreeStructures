@@ -13,6 +13,10 @@ option(LOCKFREESTRUCTURES_BUILD_BENCHMARKS
        "Build queue comparison benchmarks"
        OFF)
 
+option(LOCKFREESTRUCTURES_BUILD_QUEUE_COMPARISON_BENCHMARK
+       "Build the standalone hakle-vs-moodycamel benchmark (no Boost/TBB needed)"
+       OFF)
+
 # Header-only library target used by tests and downstream projects.
 add_library(lockfree_structures INTERFACE)
 add_library(LockFreeStructures::lockfree_structures ALIAS lockfree_structures)
@@ -99,6 +103,39 @@ if(BUILD_TESTING)
         RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${TEST_BIN_DIR}"
     )
   endforeach()
+endif()
+
+if(LOCKFREESTRUCTURES_BUILD_QUEUE_COMPARISON_BENCHMARK)
+  add_executable(
+    queue_comparison_benchmark
+    "${PROJECT_SOURCE_DIR}/benchmark/queue_comparison_benchmark.cc"
+  )
+
+  target_include_directories(
+    queue_comparison_benchmark
+    SYSTEM
+    PRIVATE
+      "${PROJECT_SOURCE_DIR}/benchmark/third_party"
+  )
+
+  target_link_libraries(
+    queue_comparison_benchmark
+    PRIVATE
+      LockFreeStructures::lockfree_structures
+      Threads::Threads
+  )
+
+  lockfree_enable_warnings(queue_comparison_benchmark)
+
+  set_target_properties(
+    queue_comparison_benchmark
+    PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/benchmark/bin"
+      RUNTIME_OUTPUT_DIRECTORY_DEBUG "${PROJECT_BINARY_DIR}/benchmark/bin"
+      RUNTIME_OUTPUT_DIRECTORY_RELEASE "${PROJECT_BINARY_DIR}/benchmark/bin"
+      RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${PROJECT_BINARY_DIR}/benchmark/bin"
+      RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${PROJECT_BINARY_DIR}/benchmark/bin"
+  )
 endif()
 
 if(LOCKFREESTRUCTURES_BUILD_BENCHMARKS)

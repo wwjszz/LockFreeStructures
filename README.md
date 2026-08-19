@@ -10,6 +10,9 @@ moodycamel's per-producer subqueue design.
 - Implicit producers and explicit `ProducerToken` / `ConsumerToken` APIs
 - Single-item and bulk enqueue/dequeue operations
 - Customizable allocators, blocks, block managers, and queue traits
+- Per-slot block policies: byte flags, packed word flags, and a counter
+- Sharded slab/arena block managers for producer-affine recycling
+- Thread-local cached implicit dequeue path, configurable through traits
 - Header-only integration
 
 The queue preserves FIFO order within each producer, but it does not define a
@@ -66,7 +69,26 @@ lifetime, exception recovery, and allocator propagation.
 
 ## Benchmarks
 
-The optional benchmark compares Hakle's implicit, token, and token-bulk paths
+A lightweight standalone benchmark compares Hakle default/slab/arena/word-flag
+configurations against the vendored moodycamel queue. It only needs a C++20
+compiler and `Threads`, so it can be run without Boost or oneTBB:
+
+```sh
+cmake -S . -B build-standalone \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLOCKFREESTRUCTURES_BUILD_QUEUE_COMPARISON_BENCHMARK=ON
+cmake --build build-standalone --parallel
+build-standalone/benchmark/bin/queue_comparison_benchmark 10 \
+  > benchmark/results/local-queue-comparison.json
+```
+
+Recent Apple M5 Pro / Clang 21 results are in
+`benchmark/results/macos-m5pro-clang21-baseline-2026-08-19.json` and
+`benchmark/results/macos-m5pro-clang21-optimized-2026-08-19.json`; the
+three-process min/median aggregation used in the comparison table is in
+`benchmark/results/macos-m5pro-clang21-summary-2026-08-19.json`.
+
+The optional full benchmark compares Hakle's implicit, token, and token-bulk paths
 with moodycamel, Boost.Lockfree, oneTBB, and a mutex-protected `std::queue`.
 Google Benchmark and oneTBB are loaded from `thirdparty/` when available, or
 fetched at configure time. Boost 1.74 or newer must be installed or supplied

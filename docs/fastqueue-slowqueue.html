@@ -1,0 +1,1701 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>FastQueue Deep Dive</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="FastQueue Deep Dive" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;zh-CN&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;FastQueue Deep Dive&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: var(--border-radius-lg, 12.5px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed=&quot;true&quot;],
+  [aria-selected=&quot;true&quot;],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: 16px !important;
+  height: 16px !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;fastqueue-deep-dive&quot;&gt;
+  &lt;style&gt;
+    #fastqueue-deep-dive { width: 100%; color: var(--foreground); }
+    #fastqueue-deep-dive * { box-sizing: border-box; }
+    #fastqueue-deep-dive h2,
+    #fastqueue-deep-dive h3 { margin-bottom: 8px; }
+    #fastqueue-deep-dive .fq-subtitle { color: var(--muted-foreground); margin-bottom: 16px; }
+    #fastqueue-deep-dive .fq-flow {
+      display: grid;
+      grid-template-columns: minmax(130px, 1fr) auto minmax(150px, 1.2fr) auto minmax(150px, 1.2fr) auto minmax(150px, 1.2fr);
+      align-items: center;
+      gap: 8px;
+      margin: 12px 0 18px;
+    }
+    #fastqueue-deep-dive .fq-node {
+      padding: 10px 12px;
+      text-align: center;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--muted) 62%, transparent);
+    }
+    #fastqueue-deep-dive .fq-node strong,
+    #fastqueue-deep-dive .fq-node span { display: block; }
+    #fastqueue-deep-dive .fq-node span { color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-arrow { text-align: center; color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-principles {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin: 10px 0 22px;
+    }
+    #fastqueue-deep-dive .fq-principle {
+      padding-left: 12px;
+      border-left: 3px solid var(--viz-series-1);
+    }
+    #fastqueue-deep-dive .fq-principle strong,
+    #fastqueue-deep-dive .fq-principle span { display: block; }
+    #fastqueue-deep-dive .fq-principle span { color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-structure {
+      display: grid;
+      grid-template-columns: minmax(190px, .9fr) minmax(0, 2.1fr);
+      gap: 18px;
+      margin: 10px 0 22px;
+    }
+    #fastqueue-deep-dive .fq-state-list {
+      display: grid;
+      gap: 8px;
+    }
+    #fastqueue-deep-dive .fq-state-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      background: color-mix(in srgb, var(--muted) 48%, transparent);
+      border-radius: 7px;
+    }
+    #fastqueue-deep-dive .fq-state-row span { color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-ring-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    #fastqueue-deep-dive .fq-ring-label span { color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-block-row,
+    #fastqueue-deep-dive .fq-index-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+    #fastqueue-deep-dive .fq-block {
+      flex: 1 1 150px;
+      min-width: 150px;
+      max-width: 220px;
+    }
+    #fastqueue-deep-dive .fq-block-header,
+    #fastqueue-deep-dive .fq-entry-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 5px;
+    }
+    #fastqueue-deep-dive .fq-block-header span,
+    #fastqueue-deep-dive .fq-entry-header span { color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-cells {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(30px, 1fr));
+      gap: 3px;
+    }
+    #fastqueue-deep-dive .fq-cell {
+      min-height: 50px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    #fastqueue-deep-dive .fq-cell small { color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-cell.is-live {
+      background: color-mix(in srgb, var(--viz-series-1) 18%, transparent);
+      border-color: color-mix(in srgb, var(--viz-series-1) 48%, var(--border));
+    }
+    #fastqueue-deep-dive .fq-cell.is-focus {
+      background: color-mix(in srgb, var(--viz-series-2) 24%, transparent);
+      border-color: var(--viz-series-2);
+    }
+    #fastqueue-deep-dive .fq-cell.is-empty {
+      background: color-mix(in srgb, var(--muted) 52%, transparent);
+      color: var(--muted-foreground);
+    }
+    #fastqueue-deep-dive .fq-block-note { margin-top: 5px; color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-index-section { margin-top: 14px; }
+    #fastqueue-deep-dive .fq-entry {
+      flex: 1 1 145px;
+      min-width: 145px;
+      max-width: 220px;
+      padding: 8px 10px;
+      border-left: 3px solid var(--border);
+      background: color-mix(in srgb, var(--muted) 42%, transparent);
+    }
+    #fastqueue-deep-dive .fq-entry.is-tail { border-left-color: var(--viz-series-1); }
+    #fastqueue-deep-dive .fq-entry.is-focus {
+      border-left-color: var(--viz-series-2);
+      background: color-mix(in srgb, var(--viz-series-2) 14%, transparent);
+    }
+    #fastqueue-deep-dive .fq-entry code { display: block; }
+    #fastqueue-deep-dive .fq-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      color: var(--muted-foreground);
+      margin-top: 8px;
+    }
+    #fastqueue-deep-dive .fq-swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 5px;
+      border-radius: 2px;
+      vertical-align: -1px;
+      border: 1px solid var(--border);
+    }
+    #fastqueue-deep-dive .fq-swatch.live { background: var(--viz-series-1); }
+    #fastqueue-deep-dive .fq-swatch.focus { background: var(--viz-series-2); }
+    #fastqueue-deep-dive .fq-controls-title { display: block; margin: 0 0 6px; color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-controls { margin: 8px 0 12px; }
+    #fastqueue-deep-dive .fq-current {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 12px 0;
+    }
+    #fastqueue-deep-dive .fq-current strong,
+    #fastqueue-deep-dive .fq-current span { display: block; }
+    #fastqueue-deep-dive .fq-current span { color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-counter-row {
+      display: flex;
+      gap: 8px 14px;
+      flex-wrap: wrap;
+    }
+    #fastqueue-deep-dive .fq-detail {
+      margin: 12px 0 14px;
+      padding-left: 12px;
+      border-left: 3px solid var(--viz-series-1);
+    }
+    #fastqueue-deep-dive .fq-detail strong,
+    #fastqueue-deep-dive .fq-detail span { display: block; }
+    #fastqueue-deep-dive .fq-detail span { color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-code-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    #fastqueue-deep-dive pre {
+      margin: 0;
+      padding: 12px;
+      overflow: auto;
+      background: color-mix(in srgb, var(--muted) 52%, transparent);
+      border-radius: 8px;
+    }
+    #fastqueue-deep-dive .fq-notes {
+      display: grid;
+      gap: 8px;
+    }
+    #fastqueue-deep-dive .fq-note {
+      padding: 8px 10px;
+      background: color-mix(in srgb, var(--muted) 42%, transparent);
+      border-radius: 7px;
+    }
+    #fastqueue-deep-dive .fq-note strong,
+    #fastqueue-deep-dive .fq-note span { display: block; }
+    #fastqueue-deep-dive .fq-note span { color: var(--muted-foreground); }
+    #fastqueue-deep-dive .fq-section { margin-top: 24px; }
+    #fastqueue-deep-dive .fq-bottom-note {
+      margin-top: 12px;
+      color: var(--muted-foreground);
+    }
+    @media (max-width: 760px) {
+      #fastqueue-deep-dive .fq-flow { grid-template-columns: 1fr; }
+      #fastqueue-deep-dive .fq-arrow { transform: rotate(90deg); }
+      #fastqueue-deep-dive .fq-principles,
+      #fastqueue-deep-dive .fq-structure,
+      #fastqueue-deep-dive .fq-code-grid { grid-template-columns: 1fr; }
+      #fastqueue-deep-dive .fq-block,
+      #fastqueue-deep-dive .fq-entry { max-width: none; }
+    }
+  &lt;/style&gt;
+
+  &lt;h2&gt;FastQueue：producer-local SPMC queue&lt;/h2&gt;
+  &lt;div class=&quot;fq-subtitle&quot;&gt;它不是整个 MPMC queue，而是显式 producer 在 ConcurrentQueue 内部拥有的一条单生产者、多消费者子队列。&lt;/div&gt;
+
+  &lt;div class=&quot;fq-flow&quot; aria-label=&quot;FastQueue position in ConcurrentQueue&quot;&gt;
+    &lt;div class=&quot;fq-node&quot;&gt;&lt;strong&gt;ConcurrentQueue&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;组合多个 producer 子队列&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;fq-arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/div&gt;
+    &lt;div class=&quot;fq-node&quot;&gt;&lt;strong&gt;ProducerToken&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;明确绑定一个 producer&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;fq-arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/div&gt;
+    &lt;div class=&quot;fq-node&quot;&gt;&lt;strong&gt;FastQueue&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;一个 producer 顺序写&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;fq-arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/div&gt;
+    &lt;div class=&quot;fq-node&quot;&gt;&lt;strong&gt;多个 consumer&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;原子抢占 dequeue 序号&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;fq-principles&quot;&gt;
+    &lt;div class=&quot;fq-principle&quot;&gt;&lt;strong&gt;逻辑序号与物理存储分离&lt;/strong&gt;&lt;span&gt;Head/Tail 是递增序号；真正的对象放在固定大小 Block 中。&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;fq-principle&quot;&gt;&lt;strong&gt;单 producer 消掉写侧竞争&lt;/strong&gt;&lt;span&gt;producer 独占 TailBlock 和索引写指针，不需要多个 producer 之间 CAS。&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;fq-principle&quot;&gt;&lt;strong&gt;保留 Block，循环复用&lt;/strong&gt;&lt;span&gt;consumer 只标记槽位为空；producer 在下一圈 Reset 整个空 Block。&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;h3&gt;总体数据结构&lt;/h3&gt;
+  &lt;div class=&quot;fq-structure&quot;&gt;
+    &lt;div&gt;
+      &lt;div class=&quot;fq-ring-label&quot;&gt;&lt;strong&gt;共享计数器&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;_QueueBase&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;fq-state-list&quot;&gt;
+        &lt;div class=&quot;fq-state-row&quot;&gt;&lt;code&gt;TailIndex&lt;/code&gt;&lt;span&gt;已发布元素的右边界&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;fq-state-row&quot;&gt;&lt;code&gt;HeadIndex&lt;/code&gt;&lt;span&gt;成功 consumer 的下一个序号&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;fq-state-row&quot;&gt;&lt;code&gt;DequeueAttemptsCount&lt;/code&gt;&lt;span&gt;抢过的 dequeue tickets&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;fq-state-row&quot;&gt;&lt;code&gt;DequeueFailedCount&lt;/code&gt;&lt;span&gt;越过 Tail 的失败 tickets&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;fq-state-row&quot;&gt;&lt;code&gt;TailBlock&lt;/code&gt;&lt;span&gt;producer 当前写入的 Block&lt;/span&gt;&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div&gt;
+      &lt;div class=&quot;fq-ring-label&quot;&gt;&lt;strong&gt;Block 环&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;Elements[BlockSize] + Flags[BlockSize] + Next&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;fq-block-row&quot; id=&quot;fq-overview-blocks&quot;&gt;&lt;/div&gt;
+      &lt;div class=&quot;fq-index-section&quot;&gt;
+        &lt;div class=&quot;fq-ring-label&quot;&gt;&lt;strong&gt;Block 索引环&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;逻辑 block base → 物理 Block*&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;fq-index-row&quot; id=&quot;fq-overview-index&quot;&gt;&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;fq-legend text-small&quot;&gt;&lt;span&gt;&lt;i class=&quot;fq-swatch live&quot;&gt;&lt;/i&gt;已有对象&lt;/span&gt;&lt;span&gt;&lt;i class=&quot;fq-swatch focus&quot;&gt;&lt;/i&gt;当前步骤&lt;/span&gt;&lt;span&gt;∅ 表示槽位已空&lt;/span&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;table-responsive&quot;&gt;
+    &lt;table class=&quot;table table-sm&quot;&gt;
+      &lt;thead&gt;&lt;tr&gt;&lt;th&gt;结构&lt;/th&gt;&lt;th&gt;关键字段&lt;/th&gt;&lt;th&gt;作用&lt;/th&gt;&lt;th&gt;谁修改&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+      &lt;tbody&gt;
+        &lt;tr&gt;&lt;td&gt;&lt;code&gt;HakleFlagsBlock&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;Elements[]&lt;/code&gt;、&lt;code&gt;Flags[]&lt;/code&gt;、&lt;code&gt;Next&lt;/code&gt;&lt;/td&gt;&lt;td&gt;连续存放对象，并形成循环 Block 链&lt;/td&gt;&lt;td&gt;producer 写对象；consumer 写 empty flag&lt;/td&gt;&lt;/tr&gt;
+        &lt;tr&gt;&lt;td&gt;&lt;code&gt;IndexEntry&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;Base&lt;/code&gt;、&lt;code&gt;InnerBlock&lt;/code&gt;&lt;/td&gt;&lt;td&gt;把逻辑 Block 起始序号映射到 Block 指针&lt;/td&gt;&lt;td&gt;producer&lt;/td&gt;&lt;/tr&gt;
+        &lt;tr&gt;&lt;td&gt;&lt;code&gt;IndexEntryArray&lt;/code&gt;&lt;/td&gt;&lt;td&gt;&lt;code&gt;Size&lt;/code&gt;、&lt;code&gt;Tail&lt;/code&gt;、&lt;code&gt;Entries&lt;/code&gt;、&lt;code&gt;Prev&lt;/code&gt;&lt;/td&gt;&lt;td&gt;环形索引；扩容后用 Prev 保住旧 reader 视图&lt;/td&gt;&lt;td&gt;producer 发布；consumer 读取&lt;/td&gt;&lt;/tr&gt;
+        &lt;tr&gt;&lt;td&gt;producer-only state&lt;/td&gt;&lt;td&gt;&lt;code&gt;PO_NextIndexEntry&lt;/code&gt;、&lt;code&gt;PO_IndexEntriesUsed&lt;/code&gt;、&lt;code&gt;PO_PrevEntries&lt;/code&gt;&lt;/td&gt;&lt;td&gt;推进索引写位置，记录已保留的物理 Block 数量&lt;/td&gt;&lt;td&gt;唯一 producer&lt;/td&gt;&lt;/tr&gt;
+      &lt;/tbody&gt;
+    &lt;/table&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;fq-section&quot;&gt;
+    &lt;h3&gt;按执行阶段看算法&lt;/h3&gt;
+    &lt;span class=&quot;fq-controls-title text-small&quot;&gt;选择一个阶段&lt;/span&gt;
+    &lt;div class=&quot;viz-controls fq-controls&quot; id=&quot;fq-phase-controls&quot; aria-label=&quot;FastQueue algorithm phase&quot;&gt;&lt;/div&gt;
+    &lt;div class=&quot;card fq-current&quot; aria-live=&quot;polite&quot;&gt;
+      &lt;div&gt;&lt;strong id=&quot;fq-current-title&quot;&gt;&lt;/strong&gt;&lt;span id=&quot;fq-current-subtitle&quot;&gt;&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;fq-counter-row&quot; id=&quot;fq-current-counters&quot;&gt;&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div&gt;
+      &lt;div class=&quot;fq-ring-label&quot;&gt;&lt;strong&gt;当前 Block 环&lt;/strong&gt;&lt;span class=&quot;text-small&quot; id=&quot;fq-ring-note&quot;&gt;&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;fq-block-row&quot; id=&quot;fq-step-blocks&quot;&gt;&lt;/div&gt;
+      &lt;div class=&quot;fq-index-section&quot;&gt;
+        &lt;div class=&quot;fq-ring-label&quot;&gt;&lt;strong&gt;当前索引环&lt;/strong&gt;&lt;span class=&quot;text-small&quot; id=&quot;fq-index-note&quot;&gt;&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;fq-index-row&quot; id=&quot;fq-step-index&quot;&gt;&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;fq-detail&quot;&gt;&lt;strong id=&quot;fq-detail-title&quot;&gt;&lt;/strong&gt;&lt;span id=&quot;fq-detail-body&quot;&gt;&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;fq-code-grid&quot;&gt;
+      &lt;pre&gt;&lt;code id=&quot;fq-code&quot;&gt;&lt;/code&gt;&lt;/pre&gt;
+      &lt;div class=&quot;fq-notes&quot; id=&quot;fq-notes&quot;&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;fq-section&quot;&gt;
+    &lt;h3&gt;逻辑序号如何定位 Block&lt;/h3&gt;
+    &lt;div class=&quot;table-responsive&quot;&gt;
+      &lt;table class=&quot;table table-sm&quot;&gt;
+        &lt;tbody&gt;
+          &lt;tr&gt;&lt;td&gt;&lt;code&gt;innerIndex = index &amp;amp; (BlockSize - 1)&lt;/code&gt;&lt;/td&gt;&lt;td&gt;序号在 Block 内的位置&lt;/td&gt;&lt;/tr&gt;
+          &lt;tr&gt;&lt;td&gt;&lt;code&gt;blockBase = index &amp;amp; ~(BlockSize - 1)&lt;/code&gt;&lt;/td&gt;&lt;td&gt;所属 Block 的逻辑起点&lt;/td&gt;&lt;/tr&gt;
+          &lt;tr&gt;&lt;td&gt;&lt;code&gt;offset = (blockBase - tailBase) &amp;gt;&amp;gt; log2(BlockSize)&lt;/code&gt;&lt;/td&gt;&lt;td&gt;相对最新索引项的环形偏移；无符号回绕负责向前找旧 Block&lt;/td&gt;&lt;/tr&gt;
+          &lt;tr&gt;&lt;td&gt;&lt;code&gt;slot = (indexTail + offset) &amp;amp; (arraySize - 1)&lt;/code&gt;&lt;/td&gt;&lt;td&gt;落到索引环中的槽位&lt;/td&gt;&lt;/tr&gt;
+        &lt;/tbody&gt;
+      &lt;/table&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;fq-bottom-note&quot;&gt;示例：BlockSize=4，index=5 → blockBase=4、innerIndex=1；最新 entry 的 Base=8 时，环形回绕最终落到保存 Block B 的索引槽。&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;fq-section&quot;&gt;
+    &lt;h3&gt;必须一直成立的并发不变量&lt;/h3&gt;
+    &lt;div class=&quot;table-responsive&quot;&gt;
+      &lt;table class=&quot;table table-sm&quot;&gt;
+        &lt;thead&gt;&lt;tr&gt;&lt;th&gt;不变量&lt;/th&gt;&lt;th&gt;为什么重要&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+        &lt;tbody&gt;
+          &lt;tr&gt;&lt;td&gt;FastQueue 只能有一个 producer&lt;/td&gt;&lt;td&gt;&lt;code&gt;TailIndex&lt;/code&gt;、&lt;code&gt;TailBlock&lt;/code&gt; 和 producer-only 索引字段按普通顺序推进，没有为多 producer 冲突设计 CAS。&lt;/td&gt;&lt;/tr&gt;
+          &lt;tr&gt;&lt;td&gt;&lt;code&gt;BlockSize&lt;/code&gt; 必须是 2 的幂&lt;/td&gt;&lt;td&gt;序号映射依赖位掩码和右移，替代除法与取模。&lt;/td&gt;&lt;/tr&gt;
+          &lt;tr&gt;&lt;td&gt;对象与 IndexEntry 先写，&lt;code&gt;TailIndex&lt;/code&gt; 最后 release 发布&lt;/td&gt;&lt;td&gt;consumer acquire 看到新 Tail 时，也能看到已经构造好的对象和对应 Block 映射。&lt;/td&gt;&lt;/tr&gt;
+          &lt;tr&gt;&lt;td&gt;成功 ticket 才能推进 &lt;code&gt;HeadIndex&lt;/code&gt;&lt;/td&gt;&lt;td&gt;失败 consumer 只增加 FailedCount，不得吃掉一个真实元素序号。&lt;/td&gt;&lt;/tr&gt;
+          &lt;tr&gt;&lt;td&gt;consumer 销毁对象后才把 flag 标空&lt;/td&gt;&lt;td&gt;所有 flag 都空意味着没有 consumer 仍在使用该 Block，producer 才能 Reset 并覆盖。&lt;/td&gt;&lt;/tr&gt;
+          &lt;tr&gt;&lt;td&gt;旧 IndexEntryArray 不立即释放&lt;/td&gt;&lt;td&gt;consumer 可能已经抓住旧数组指针；Prev 链让旧视图活到 FastQueue 析构。&lt;/td&gt;&lt;/tr&gt;
+        &lt;/tbody&gt;
+      &lt;/table&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;fq-section&quot;&gt;
+    &lt;h3&gt;Bulk 路径的思想&lt;/h3&gt;
+    &lt;div class=&quot;fq-principles&quot;&gt;
+      &lt;div class=&quot;fq-principle&quot;&gt;&lt;strong&gt;一次算出需要多少 Block&lt;/strong&gt;&lt;span&gt;根据起始 Tail、Count 和 BlockSize，提前复用或接入足够 Block。&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;fq-principle&quot;&gt;&lt;strong&gt;连续构造，最后一次发布&lt;/strong&gt;&lt;span&gt;跨 Block 填充对象，全部成功后一次 release 更新 TailIndex。&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;fq-principle&quot;&gt;&lt;strong&gt;consumer 一次抢一段&lt;/strong&gt;&lt;span&gt;一次 fetch_add 领取 ActualCount，再沿 Block→Next 批量移动和置空。&lt;/span&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;script&gt;
+    (() =&gt; {
+      const root = document.getElementById(&#x27;fastqueue-deep-dive&#x27;);
+      const controls = root.querySelector(&#x27;#fq-phase-controls&#x27;);
+      const currentTitle = root.querySelector(&#x27;#fq-current-title&#x27;);
+      const currentSubtitle = root.querySelector(&#x27;#fq-current-subtitle&#x27;);
+      const currentCounters = root.querySelector(&#x27;#fq-current-counters&#x27;);
+      const ringNote = root.querySelector(&#x27;#fq-ring-note&#x27;);
+      const indexNote = root.querySelector(&#x27;#fq-index-note&#x27;);
+      const stepBlocks = root.querySelector(&#x27;#fq-step-blocks&#x27;);
+      const stepIndex = root.querySelector(&#x27;#fq-step-index&#x27;);
+      const detailTitle = root.querySelector(&#x27;#fq-detail-title&#x27;);
+      const detailBody = root.querySelector(&#x27;#fq-detail-body&#x27;);
+      const code = root.querySelector(&#x27;#fq-code&#x27;);
+      const notes = root.querySelector(&#x27;#fq-notes&#x27;);
+
+      const phases = [
+        {
+          name: &#x27;总体模型&#x27;, subtitle: &#x27;单 producer 写，多个 consumer 抢逻辑序号&#x27;,
+          counters: [&#x27;TailIndex=6&#x27;, &#x27;HeadIndex=2&#x27;, &#x27;attempts=2&#x27;, &#x27;failed=0&#x27;],
+          detail: &#x27;FastQueue 把一条逻辑 FIFO 拆成“单调递增序号 + Block 环 + Block 索引环”。producer 只碰尾部；consumer 先抢序号，再通过索引环找到物理槽位。&#x27;,
+          code: &#x27;logical FIFO\n  ├─ sequence: HeadIndex ... TailIndex\n  ├─ storage:  Block A → Block B → A\n  └─ lookup:   Base 0 → A, Base 4 → B&#x27;,
+          notes: [[&#x27;写侧&#x27;, &#x27;唯一 producer 不需要和别的 producer 争 Tail。&#x27;], [&#x27;读侧&#x27;, &#x27;多个 consumer 只通过原子计数器协调。&#x27;], [&#x27;复用&#x27;, &#x27;Block 不随出队立即归还。&#x27;]],
+          state: &#x27;base&#x27;
+        },
+        {
+          name: &#x27;Block 内入队&#x27;, subtitle: &#x27;innerIndex != 0，直接写当前 TailBlock&#x27;,
+          counters: [&#x27;current=6&#x27;, &#x27;inner=2&#x27;, &#x27;newTail=7&#x27;],
+          detail: &#x27;没有跨 Block 时，路径非常短：读 TailIndex，按 mask 算槽位，构造对象，最后 release-store 新 Tail。&#x27;,
+          code: &#x27;current = TailIndex.load(relaxed)\ninner = current &amp; (BlockSize - 1)\nconstruct((*TailBlock)[inner], value)\nTailIndex.store(current + 1, release)&#x27;,
+          notes: [[&#x27;为什么不用 fetch_add&#x27;, &#x27;TailIndex 只有这个 producer 写。&#x27;], [&#x27;发布点&#x27;, &#x27;TailIndex 的 release-store 是对象可见性的边界。&#x27;], [&#x27;当前例子&#x27;, &#x27;逻辑序号 #6 写入 Block B 的 slot 2。&#x27;]],
+          state: &#x27;inside&#x27;
+        },
+        {
+          name: &#x27;接入新 Block&#x27;, subtitle: &#x27;innerIndex == 0，且 TailBlock→Next 还没全空&#x27;,
+          counters: [&#x27;current=8&#x27;, &#x27;inner=0&#x27;, &#x27;usedBlocks: 2→3&#x27;],
+          detail: &#x27;跨 Block 时，如果环中下一个 Block 仍有 consumer 未完成，就取得一个新 Block，插到 TailBlock 后面，并让整个链继续保持首尾相连。&#x27;,
+          code: &#x27;newBlock.Reset()\nnewBlock.Next = TailBlock.Next\nTailBlock.Next = &amp;newBlock\nTailBlock = &amp;newBlock\n++PO_IndexEntriesUsed&#x27;,
+          notes: [[&#x27;为什么不能覆盖 Next&#x27;, &#x27;Next 中只要有一个 flag 未空，就可能仍被 consumer 使用。&#x27;], [&#x27;环形链接&#x27;, &#x27;新 Block 插在当前尾与最老 Block 之间。&#x27;], [&#x27;used 的含义&#x27;, &#x27;它是保留的物理 Block 数，不是当前元素数。&#x27;]],
+          state: &#x27;allocate&#x27;
+        },
+        {
+          name: &#x27;复用空 Block&#x27;, subtitle: &#x27;innerIndex == 0，且 TailBlock→Next 已全空&#x27;,
+          counters: [&#x27;current=12&#x27;, &#x27;next=A&#x27;, &#x27;allocation=0&#x27;],
+          detail: &#x27;如果下一个 Block 的所有 flag 都为空，producer 直接把 TailBlock 前移到它，Reset flags，然后用新的 Base 覆盖对应索引项。&#x27;,
+          code: &#x27;if (TailBlock &amp;&amp; TailBlock-&gt;Next-&gt;IsEmpty()) {\n  TailBlock = TailBlock-&gt;Next\n  TailBlock-&gt;Reset()\n}\n// no ReturnBlock / RequisitionBlock&#x27;,
+          notes: [[&#x27;快在哪里&#x27;, &#x27;稳定负载下避免 Block 归还与重新取得。&#x27;], [&#x27;安全条件&#x27;, &#x27;所有槽位都由 consumer 标空后才能 Reset。&#x27;], [&#x27;空间代价&#x27;, &#x27;子队列会保留自己曾经达到的 Block 峰值。&#x27;]],
+          state: &#x27;reuse&#x27;
+        },
+        {
+          name: &#x27;发布索引与 Tail&#x27;, subtitle: &#x27;先建立映射和对象，最后让 consumer 看见新 Tail&#x27;,
+          counters: [&#x27;entry.Base=8&#x27;, &#x27;entry.Block=C&#x27;, &#x27;TailIndex: 8→9&#x27;],
+          detail: &#x27;新 Block 的索引项先写入，IndexEntryArray.Tail 用 release 发布；对象构造完成后，TailIndex 再用 release 发布。consumer 不会先看到一个尚未就绪的元素。&#x27;,
+          code: &#x27;entry.Base = currentTail\nentry.InnerBlock = TailBlock\nindexArray.Tail.store(entrySlot, release)\nconstruct((*TailBlock)[0], value)\nTailIndex.store(currentTail + 1, release)&#x27;,
+          notes: [[&#x27;两个 Tail&#x27;, &#x27;IndexEntryArray.Tail 是最新 Block 映射；TailIndex 是最新元素边界。&#x27;], [&#x27;写入顺序&#x27;, &#x27;Block → IndexEntry → 对象 → TailIndex。&#x27;], [&#x27;consumer&#x27;, &#x27;用 acquire 读取对应发布点。&#x27;]],
+          state: &#x27;publish&#x27;
+        },
+        {
+          name: &#x27;consumer 抢 ticket&#x27;, subtitle: &#x27;先限制成功 claim 数，再推进 HeadIndex&#x27;,
+          counters: [&#x27;tail=9&#x27;, &#x27;attempts=5&#x27;, &#x27;failed=0&#x27;, &#x27;claim index=5&#x27;],
+          detail: &#x27;多个 consumer 可能同时认为队列非空，所以先用 AttemptsCount 发 ticket，再按 Tail 复核。越界 ticket 计入 FailedCount；只有有效 ticket 才 fetch_add HeadIndex。&#x27;,
+          code: &#x27;failed = DequeueFailedCount.load(relaxed)\nif (attempts - failed &lt; TailIndex) {\n  ticket = attempts.fetch_add(1)\n  if (ticket - failed &lt; TailIndex.load(acquire))\n    index = HeadIndex.fetch_add(1)\n  else\n    DequeueFailedCount.fetch_add(1, release)\n}&#x27;,
+          notes: [[&#x27;Attempts − Failed&#x27;, &#x27;表示有效或仍可能有效的 dequeue 尝试数。&#x27;], [&#x27;为什么二次检查&#x27;, &#x27;第一次检查之后，其他 consumer 可能已经把剩余元素抢完。&#x27;], [&#x27;HeadIndex&#x27;, &#x27;只给真正成功的 consumer 分配元素序号。&#x27;]],
+          state: &#x27;ticket&#x27;
+        },
+        {
+          name: &#x27;按 index 找 Block&#x27;, subtitle: &#x27;index=5 → Base=4 → Entries[1] → Block B → slot 1&#x27;,
+          counters: [&#x27;index=5&#x27;, &#x27;blockBase=4&#x27;, &#x27;inner=1&#x27;, &#x27;indexSlot=1&#x27;],
+          detail: &#x27;consumer 从最新索引 Tail 反向计算目标 Block 的环形位置。所有容量都是 2 的幂，所以 Block 内定位和索引环回绕都只需 mask 与 shift。&#x27;,
+          code: &#x27;inner = index &amp; (BlockSize - 1)\nblockBase = index &amp; ~(BlockSize - 1)\ntailSlot = array.Tail.load(acquire)\ntailBase = array.Entries[tailSlot].Base\noffset = (blockBase - tailBase) &gt;&gt; BlockSizeLog2\nslot = (tailSlot + offset) &amp; (array.Size - 1)\nblock = array.Entries[slot].InnerBlock&#x27;,
+          notes: [[&#x27;无符号回绕&#x27;, &#x27;blockBase 比 tailBase 小时，size_t 回绕后再 mask，落回较旧槽位。&#x27;], [&#x27;直接数组&#x27;, &#x27;FastQueue 的 IndexEntry 就在连续 Entries[] 中，没有额外指针层。&#x27;], [&#x27;读取顺序&#x27;, &#x27;先拿 Head index，再读取 CurrentIndexEntryArray，避免扩容竞态。&#x27;]],
+          state: &#x27;locate&#x27;
+        },
+        {
+          name: &#x27;移动、销毁、置空&#x27;, subtitle: &#x27;consumer 完成槽位生命周期，但不归还 Block&#x27;,
+          counters: [&#x27;index=5&#x27;, &#x27;Block=B&#x27;, &#x27;Flags[1]: 0→1&#x27;],
+          detail: &#x27;拿到 Block 和 inner 后，consumer 移出对象、销毁原对象，再把对应 flag release-store 为 empty。即使整个 Block 已空，也只是留下给 producer 下一圈复用。&#x27;,
+          code: &#x27;value = (*dequeueBlock)[inner]\nout = move(value)\ndestroy(value)\ndequeueBlock-&gt;SetEmpty(inner)\n// FastQueue does not return the block here&#x27;,
+          notes: [[&#x27;flag=0&#x27;, &#x27;这一槽位属于当前一代 Block，不能覆盖。&#x27;], [&#x27;flag=1&#x27;, &#x27;该槽位对象已完成并销毁。&#x27;], [&#x27;IsEmpty&#x27;, &#x27;producer 扫描全部 flags；全为 1 后用 acquire fence 确认。&#x27;]],
+          state: &#x27;empty&#x27;
+        },
+        {
+          name: &#x27;索引扩容&#x27;, subtitle: &#x27;容量翻倍，复制活跃描述符，release 发布新视图&#x27;,
+          counters: [&#x27;oldSize=4&#x27;, &#x27;newSize=8&#x27;, &#x27;Prev=oldArray&#x27;],
+          detail: &#x27;当新增物理 Block 会超过索引容量时，producer 创建双倍数组，把旧环中仍在使用的 entry 按逻辑顺序复制进去，再原子发布 CurrentIndexEntryArray。&#x27;,
+          code: &#x27;newSize = oldSize * 2\ncopy live entries: oldest → newest\nnewArray.Tail = filledSlots - 1\nnewArray.Prev = oldArray\nCurrentIndexEntryArray.store(newArray, release)&#x27;,
+          notes: [[&#x27;为什么复制&#x27;, &#x27;FastQueue 的 IndexEntry 是直接存放的普通 {Base, Block*}。&#x27;], [&#x27;为什么留 Prev&#x27;, &#x27;已经读取旧数组指针的 consumer 仍可能继续访问。&#x27;], [&#x27;何时释放旧数组&#x27;, &#x27;直到 FastQueue Clear/析构统一释放。&#x27;]],
+          state: &#x27;grow&#x27;
+        }
+      ];
+
+      let phaseIndex = 0;
+
+      function makeButton(label, selected, index) {
+        const button = document.createElement(&#x27;button&#x27;);
+        button.type = &#x27;button&#x27;;
+        button.className = selected ? &#x27;btn btn-primary&#x27; : &#x27;btn btn-ghost&#x27;;
+        button.textContent = `${index + 1} · ${label}`;
+        button.setAttribute(&#x27;aria-pressed&#x27;, selected ? &#x27;true&#x27; : &#x27;false&#x27;);
+        button.addEventListener(&#x27;click&#x27;, () =&gt; { phaseIndex = index; render(); });
+        return button;
+      }
+
+      function blockMarkup(block) {
+        const cells = block.cells.map((state, i) =&gt; {
+          const value = state === &#x27;empty&#x27; ? &#x27;∅&#x27; : `v${block.base + i}`;
+          return `&lt;div class=&quot;fq-cell is-${state}&quot;&gt;&lt;strong&gt;${value}&lt;/strong&gt;&lt;small&gt;#${block.base + i}&lt;/small&gt;&lt;/div&gt;`;
+        }).join(&#x27;&#x27;);
+        return `&lt;div class=&quot;fq-block&quot;&gt;&lt;div class=&quot;fq-block-header&quot;&gt;&lt;strong&gt;${block.name}&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;base ${block.base}&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;fq-cells&quot;&gt;${cells}&lt;/div&gt;&lt;div class=&quot;fq-block-note text-small&quot;&gt;${block.note}&lt;/div&gt;&lt;/div&gt;`;
+      }
+
+      function entryMarkup(entry) {
+        const classes = `fq-entry${entry.tail ? &#x27; is-tail&#x27; : &#x27;&#x27;}${entry.focus ? &#x27; is-focus&#x27; : &#x27;&#x27;}`;
+        return `&lt;div class=&quot;${classes}&quot;&gt;&lt;div class=&quot;fq-entry-header&quot;&gt;&lt;strong&gt;Entries[${entry.slot}]&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;${entry.tail ? &#x27;Tail&#x27; : &#x27;&#x27;}&lt;/span&gt;&lt;/div&gt;&lt;code&gt;{ Base=${entry.base}, Block*=${entry.block} }&lt;/code&gt;&lt;/div&gt;`;
+      }
+
+      function stateFor(name) {
+        const defaultBlocks = [
+          {name:&#x27;Block A&#x27;, base:0, cells:[&#x27;empty&#x27;,&#x27;empty&#x27;,&#x27;live&#x27;,&#x27;live&#x27;], note:&#x27;Next → B&#x27;},
+          {name:&#x27;Block B&#x27;, base:4, cells:[&#x27;live&#x27;,&#x27;live&#x27;,&#x27;empty&#x27;,&#x27;empty&#x27;], note:&#x27;TailBlock · Next → A&#x27;}
+        ];
+        const defaultEntries = [
+          {slot:0, base:0, block:&#x27;A&#x27;}, {slot:1, base:4, block:&#x27;B&#x27;, tail:true}, {slot:2, base:&#x27;—&#x27;, block:&#x27;empty&#x27;}, {slot:3, base:&#x27;—&#x27;, block:&#x27;empty&#x27;}
+        ];
+        if (name === &#x27;inside&#x27;) {
+          defaultBlocks[1].cells[2] = &#x27;focus&#x27;;
+          return {blocks:defaultBlocks, entries:defaultEntries, ring:&#x27;A → B → A；当前写 B[2]&#x27;, index:&#x27;最新映射仍是 Base 4 → B&#x27;};
+        }
+        if (name === &#x27;allocate&#x27; || name === &#x27;publish&#x27;) {
+          const thirdState = name === &#x27;publish&#x27; ? &#x27;focus&#x27; : &#x27;empty&#x27;;
+          return {
+            blocks:[
+              {name:&#x27;Block A&#x27;, base:0, cells:[&#x27;empty&#x27;,&#x27;empty&#x27;,&#x27;live&#x27;,&#x27;live&#x27;], note:&#x27;仍未全空 · Next → B&#x27;},
+              {name:&#x27;Block B&#x27;, base:4, cells:[&#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;], note:&#x27;旧 TailBlock · Next → C&#x27;},
+              {name:&#x27;Block C&#x27;, base:8, cells:[thirdState,&#x27;empty&#x27;,&#x27;empty&#x27;,&#x27;empty&#x27;], note:&#x27;新 TailBlock · Next → A&#x27;}
+            ],
+            entries:[
+              {slot:0, base:0, block:&#x27;A&#x27;}, {slot:1, base:4, block:&#x27;B&#x27;}, {slot:2, base:8, block:&#x27;C&#x27;, tail:true, focus:true}, {slot:3, base:&#x27;—&#x27;, block:&#x27;empty&#x27;}
+            ],
+            ring:&#x27;在 B 与 A 之间插入 C，保持循环链&#x27;, index:&#x27;Entries[2] 建立 Base 8 → C&#x27;
+          };
+        }
+        if (name === &#x27;reuse&#x27;) {
+          return {
+            blocks:[
+              {name:&#x27;Block A&#x27;, base:12, cells:[&#x27;focus&#x27;,&#x27;empty&#x27;,&#x27;empty&#x27;,&#x27;empty&#x27;], note:&#x27;Reset 后成为新 TailBlock · Next → B&#x27;},
+              {name:&#x27;Block B&#x27;, base:4, cells:[&#x27;empty&#x27;,&#x27;empty&#x27;,&#x27;empty&#x27;,&#x27;empty&#x27;], note:&#x27;已全空 · Next → C&#x27;},
+              {name:&#x27;Block C&#x27;, base:8, cells:[&#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;], note:&#x27;旧 TailBlock · Next → A&#x27;}
+            ],
+            entries:[
+              {slot:0, base:12, block:&#x27;A&#x27;, tail:true, focus:true}, {slot:1, base:4, block:&#x27;B&#x27;}, {slot:2, base:8, block:&#x27;C&#x27;}, {slot:3, base:&#x27;—&#x27;, block:&#x27;empty&#x27;}
+            ],
+            ring:&#x27;C.Next 指向全空 A；A 原地进入下一代&#x27;, index:&#x27;旧槽位被覆盖为 Base 12 → A&#x27;
+          };
+        }
+        if (name === &#x27;ticket&#x27; || name === &#x27;locate&#x27; || name === &#x27;empty&#x27;) {
+          const bCells = name === &#x27;empty&#x27; ? [&#x27;live&#x27;,&#x27;focus&#x27;,&#x27;live&#x27;,&#x27;live&#x27;] : [&#x27;live&#x27;, name === &#x27;locate&#x27; ? &#x27;focus&#x27; : &#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;];
+          return {
+            blocks:[
+              {name:&#x27;Block A&#x27;, base:0, cells:[&#x27;empty&#x27;,&#x27;empty&#x27;,&#x27;live&#x27;,&#x27;live&#x27;], note:&#x27;Next → B&#x27;},
+              {name:&#x27;Block B&#x27;, base:4, cells:bCells, note:name === &#x27;empty&#x27; ? &#x27;consumer 正在把 slot 1 标空&#x27; : &#x27;目标 Block · Next → C&#x27;},
+              {name:&#x27;Block C&#x27;, base:8, cells:[&#x27;live&#x27;,&#x27;empty&#x27;,&#x27;empty&#x27;,&#x27;empty&#x27;], note:&#x27;TailBlock · Next → A&#x27;}
+            ],
+            entries:[
+              {slot:0, base:0, block:&#x27;A&#x27;}, {slot:1, base:4, block:&#x27;B&#x27;, focus:name !== &#x27;ticket&#x27;}, {slot:2, base:8, block:&#x27;C&#x27;, tail:true}, {slot:3, base:&#x27;—&#x27;, block:&#x27;empty&#x27;}
+            ],
+            ring:name === &#x27;ticket&#x27; ? &#x27;consumer 还只在争逻辑序号&#x27; : &#x27;index 5 最终落到 Block B 的 slot 1&#x27;,
+            index:name === &#x27;ticket&#x27; ? &#x27;成功拿到 index 后才读取索引&#x27; : &#x27;从 Tail(Base 8) 环形回绕到 Base 4&#x27;
+          };
+        }
+        if (name === &#x27;grow&#x27;) {
+          return {
+            blocks:[
+              {name:&#x27;Block A&#x27;, base:0, cells:[&#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;], note:&#x27;Next → B&#x27;},
+              {name:&#x27;Block B&#x27;, base:4, cells:[&#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;], note:&#x27;Next → C&#x27;},
+              {name:&#x27;Block C&#x27;, base:8, cells:[&#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;,&#x27;live&#x27;], note:&#x27;TailBlock · Next → A&#x27;}
+            ],
+            entries:[
+              {slot:0, base:0, block:&#x27;A&#x27;}, {slot:1, base:4, block:&#x27;B&#x27;}, {slot:2, base:8, block:&#x27;C&#x27;, tail:true}, {slot:3, base:&#x27;new&#x27;, block:&#x27;free&#x27;},
+              {slot:4, base:&#x27;new&#x27;, block:&#x27;free&#x27;}, {slot:5, base:&#x27;new&#x27;, block:&#x27;free&#x27;}, {slot:6, base:&#x27;new&#x27;, block:&#x27;free&#x27;}, {slot:7, base:&#x27;new&#x27;, block:&#x27;free&#x27;}
+            ],
+            ring:&#x27;Block 环本身不因索引扩容而移动&#x27;, index:&#x27;新容量 8；旧 entries 复制后，新空槽可继续增长&#x27;
+          };
+        }
+        return {blocks:defaultBlocks, entries:defaultEntries, ring:&#x27;A → B → A；producer 停在 B&#x27;, index:&#x27;Base 0 → A，Base 4 → B&#x27;};
+      }
+
+      function renderOverview() {
+        const overviewBlocks = root.querySelector(&#x27;#fq-overview-blocks&#x27;);
+        const overviewIndex = root.querySelector(&#x27;#fq-overview-index&#x27;);
+        const state = stateFor(&#x27;base&#x27;);
+        overviewBlocks.innerHTML = state.blocks.map(blockMarkup).join(&#x27;&#x27;);
+        overviewIndex.innerHTML = state.entries.map(entryMarkup).join(&#x27;&#x27;);
+      }
+
+      function render() {
+        controls.replaceChildren();
+        phases.forEach((phase, index) =&gt; controls.appendChild(makeButton(phase.name, index === phaseIndex, index)));
+        const phase = phases[phaseIndex];
+        const state = stateFor(phase.state);
+        currentTitle.textContent = `${phaseIndex + 1}/${phases.length} · ${phase.name}`;
+        currentSubtitle.textContent = phase.subtitle;
+        currentCounters.innerHTML = phase.counters.map(item =&gt; `&lt;code&gt;${item}&lt;/code&gt;`).join(&#x27;&#x27;);
+        ringNote.textContent = state.ring;
+        indexNote.textContent = state.index;
+        stepBlocks.innerHTML = state.blocks.map(blockMarkup).join(&#x27;&#x27;);
+        stepIndex.innerHTML = state.entries.map(entryMarkup).join(&#x27;&#x27;);
+        detailTitle.textContent = phase.name;
+        detailBody.textContent = phase.detail;
+        code.textContent = phase.code;
+        notes.innerHTML = phase.notes.map(([heading, body]) =&gt; `&lt;div class=&quot;fq-note&quot;&gt;&lt;strong&gt;${heading}&lt;/strong&gt;&lt;span&gt;${body}&lt;/span&gt;&lt;/div&gt;`).join(&#x27;&#x27;);
+      }
+
+      renderOverview();
+      render();
+    })();
+  &lt;/script&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

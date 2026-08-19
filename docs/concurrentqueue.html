@@ -1,0 +1,1818 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>ConcurrentQueue Implementation Guide</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="ConcurrentQueue Implementation Guide" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;zh-CN&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;ConcurrentQueue Implementation Guide&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: var(--border-radius-lg, 12.5px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed=&quot;true&quot;],
+  [aria-selected=&quot;true&quot;],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: 16px !important;
+  height: 16px !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;cq-implementation-explainer&quot;&gt;
+  &lt;style&gt;
+    #cq-implementation-explainer {
+      color: var(--foreground);
+      display: grid;
+      gap: 22px;
+    }
+
+    #cq-implementation-explainer * {
+      box-sizing: border-box;
+    }
+
+    #cq-implementation-explainer header {
+      display: grid;
+      gap: 6px;
+    }
+
+    #cq-implementation-explainer header p,
+    #cq-implementation-explainer .cq-caption {
+      color: var(--muted-foreground);
+      margin: 0;
+    }
+
+    #cq-implementation-explainer h1,
+    #cq-implementation-explainer h2,
+    #cq-implementation-explainer h3,
+    #cq-implementation-explainer p {
+      margin-top: 0;
+    }
+
+    #cq-implementation-explainer h2 {
+      margin-bottom: 10px;
+    }
+
+    #cq-implementation-explainer .cq-map {
+      display: grid;
+      grid-template-columns: minmax(130px, 0.8fr) 24px minmax(180px, 1.2fr) 24px minmax(250px, 1.8fr) 24px minmax(145px, 0.9fr);
+      align-items: stretch;
+      gap: 8px;
+    }
+
+    #cq-implementation-explainer .cq-stack {
+      display: grid;
+      align-content: center;
+      gap: 8px;
+    }
+
+    #cq-implementation-explainer .cq-node {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--border);
+      background: color-mix(in srgb, var(--muted) 68%, transparent);
+      transition: opacity 160ms ease, background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+
+    #cq-implementation-explainer .cq-node strong,
+    #cq-implementation-explainer .cq-node span {
+      display: block;
+    }
+
+    #cq-implementation-explainer .cq-node span {
+      color: var(--muted-foreground);
+      margin-top: 4px;
+    }
+
+    #cq-implementation-explainer .cq-node[data-kind=&quot;fast&quot;] {
+      background: color-mix(in srgb, var(--viz-series-1) 14%, transparent);
+    }
+
+    #cq-implementation-explainer .cq-node[data-kind=&quot;slow&quot;] {
+      background: color-mix(in srgb, var(--viz-series-2) 14%, transparent);
+    }
+
+    #cq-implementation-explainer .cq-node.is-active {
+      border-color: var(--primary);
+      background: color-mix(in srgb, var(--primary) 17%, transparent);
+      transform: translateY(-2px);
+    }
+
+    #cq-implementation-explainer .cq-node.is-dim {
+      opacity: 0.32;
+    }
+
+    #cq-implementation-explainer .cq-arrow {
+      align-self: center;
+      color: var(--muted-foreground);
+      text-align: center;
+      font-size: 20px;
+    }
+
+    #cq-implementation-explainer .cq-producer-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    #cq-implementation-explainer .cq-list-head {
+      color: var(--muted-foreground);
+      text-align: center;
+    }
+
+    #cq-implementation-explainer .cq-list-node {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #cq-implementation-explainer .cq-list-node code {
+      color: var(--muted-foreground);
+    }
+
+    #cq-implementation-explainer .cq-detail {
+      display: grid;
+      gap: 14px;
+    }
+
+    #cq-implementation-explainer .cq-detail-head {
+      display: grid;
+      gap: 4px;
+    }
+
+    #cq-implementation-explainer .cq-detail-head h2,
+    #cq-implementation-explainer .cq-detail-head p {
+      margin: 0;
+    }
+
+    #cq-implementation-explainer .cq-kicker {
+      color: var(--primary);
+    }
+
+    #cq-implementation-explainer .cq-detail-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(220px, 0.9fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    #cq-implementation-explainer pre {
+      margin: 0;
+      padding: 13px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      background: color-mix(in srgb, var(--muted) 62%, transparent);
+      color: var(--foreground);
+      white-space: pre-wrap;
+    }
+
+    #cq-implementation-explainer .cq-steps,
+    #cq-implementation-explainer .cq-notes {
+      margin: 0;
+      padding-left: 21px;
+    }
+
+    #cq-implementation-explainer .cq-steps li,
+    #cq-implementation-explainer .cq-notes li {
+      margin: 0 0 7px;
+    }
+
+    #cq-implementation-explainer .cq-section-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    #cq-implementation-explainer .cq-layer {
+      display: grid;
+      align-content: start;
+      gap: 8px;
+      padding-top: 10px;
+      border-top: 2px solid var(--border);
+    }
+
+    #cq-implementation-explainer .cq-layer h3,
+    #cq-implementation-explainer .cq-layer p {
+      margin: 0;
+    }
+
+    #cq-implementation-explainer .cq-layer:nth-child(1) {
+      border-color: var(--viz-series-3);
+    }
+
+    #cq-implementation-explainer .cq-layer:nth-child(2) {
+      border-color: var(--viz-series-1);
+    }
+
+    #cq-implementation-explainer .cq-layer:nth-child(3) {
+      border-color: var(--viz-series-2);
+    }
+
+    #cq-implementation-explainer .cq-callout {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 14px 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    #cq-implementation-explainer .cq-callout strong {
+      color: var(--primary);
+    }
+
+    #cq-implementation-explainer .cq-callout p {
+      margin: 0;
+    }
+
+    #cq-implementation-explainer .table-responsive {
+      max-width: 100%;
+    }
+
+    #cq-implementation-explainer .cq-order {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      align-items: center;
+    }
+
+    #cq-implementation-explainer .cq-order-lane {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    #cq-implementation-explainer .cq-item {
+      padding: 9px 5px;
+      text-align: center;
+      background: color-mix(in srgb, var(--viz-series-1) 14%, transparent);
+      border: 1px solid var(--border);
+    }
+
+    #cq-implementation-explainer .cq-order-lane:nth-child(2) .cq-item {
+      background: color-mix(in srgb, var(--viz-series-2) 14%, transparent);
+    }
+
+    #cq-implementation-explainer .cq-merge {
+      text-align: center;
+      color: var(--muted-foreground);
+    }
+
+    @media (max-width: 860px) {
+      #cq-implementation-explainer .cq-map {
+        grid-template-columns: 1fr;
+      }
+
+      #cq-implementation-explainer .cq-arrow {
+        transform: rotate(90deg);
+      }
+
+      #cq-implementation-explainer .cq-detail-grid,
+      #cq-implementation-explainer .cq-section-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 520px) {
+      #cq-implementation-explainer .cq-order {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #cq-implementation-explainer .cq-node {
+        transition: none;
+      }
+    }
+  &lt;/style&gt;
+
+  &lt;header&gt;
+    &lt;h1&gt;ConcurrentQueue：多个 SPMC 子队列组合成 MPMC&lt;/h1&gt;
+    &lt;p&gt;外层不让所有生产者争抢同一条链，而是为每个生产者维护一条 FastQueue 或 SlowQueue，再由消费者在 ProducerList 中选择子队列。&lt;/p&gt;
+  &lt;/header&gt;
+
+  &lt;div class=&quot;viz-controls&quot; role=&quot;toolbar&quot; aria-label=&quot;实现路径&quot;&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn btn-primary&quot; data-stage=&quot;overview&quot; aria-pressed=&quot;true&quot;&gt;总体结构&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-stage=&quot;explicit&quot; aria-pressed=&quot;false&quot;&gt;Token 入队&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-stage=&quot;implicit&quot; aria-pressed=&quot;false&quot;&gt;无 Token 入队&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-stage=&quot;register&quot; aria-pressed=&quot;false&quot;&gt;登记 Producer&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-stage=&quot;dequeue&quot; aria-pressed=&quot;false&quot;&gt;普通出队&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-stage=&quot;consumer-token&quot; aria-pressed=&quot;false&quot;&gt;ConsumerToken&lt;/button&gt;
+    &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-stage=&quot;lifecycle&quot; aria-pressed=&quot;false&quot;&gt;生命周期&lt;/button&gt;
+  &lt;/div&gt;
+
+  &lt;section class=&quot;cq-map&quot; aria-label=&quot;ConcurrentQueue 结构图&quot;&gt;
+    &lt;div class=&quot;cq-stack&quot;&gt;
+      &lt;div class=&quot;cq-node&quot; data-tags=&quot;api explicit&quot;&gt;
+        &lt;strong&gt;EnqueueWithToken&lt;/strong&gt;
+        &lt;span&gt;显式 ProducerToken&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;cq-node&quot; data-tags=&quot;api implicit&quot;&gt;
+        &lt;strong&gt;Enqueue&lt;/strong&gt;
+        &lt;span&gt;当前线程 ID&lt;/span&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;cq-arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/div&gt;
+
+    &lt;div class=&quot;cq-stack&quot;&gt;
+      &lt;div class=&quot;cq-node&quot; data-tags=&quot;route explicit register&quot;&gt;
+        &lt;strong&gt;ProducerToken::ProducerNode&lt;/strong&gt;
+        &lt;span&gt;直接定位节点&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;cq-node&quot; data-tags=&quot;route implicit register&quot;&gt;
+        &lt;strong&gt;ImplicitMap&lt;/strong&gt;
+        &lt;span&gt;thread_id → SlowQueue&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;cq-node&quot; data-tags=&quot;register lifecycle&quot;&gt;
+        &lt;strong&gt;ProducerListsHead&lt;/strong&gt;
+        &lt;span&gt;CAS 插入的单链表&lt;/span&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;cq-arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/div&gt;
+
+    &lt;div class=&quot;cq-producer-list&quot; data-tags=&quot;list&quot;&gt;
+      &lt;div class=&quot;cq-list-head&quot;&gt;&lt;code&gt;ProducerListsHead&lt;/code&gt; ↓&lt;/div&gt;
+      &lt;div class=&quot;cq-node cq-list-node&quot; data-kind=&quot;fast&quot; data-tags=&quot;fast explicit dequeue consumer-token lifecycle&quot;&gt;
+        &lt;span&gt;&lt;strong&gt;ProducerListNode F1&lt;/strong&gt;FastQueue · SPMC&lt;/span&gt;
+        &lt;code&gt;Next&lt;/code&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;cq-node cq-list-node&quot; data-kind=&quot;slow&quot; data-tags=&quot;slow implicit dequeue consumer-token lifecycle&quot;&gt;
+        &lt;span&gt;&lt;strong&gt;ProducerListNode S1&lt;/strong&gt;SlowQueue · SPMC&lt;/span&gt;
+        &lt;code&gt;Next&lt;/code&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;cq-node cq-list-node&quot; data-kind=&quot;fast&quot; data-tags=&quot;fast explicit dequeue consumer-token lifecycle&quot;&gt;
+        &lt;span&gt;&lt;strong&gt;ProducerListNode F2&lt;/strong&gt;FastQueue · SPMC&lt;/span&gt;
+        &lt;code&gt;null&lt;/code&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;cq-arrow&quot; aria-hidden=&quot;true&quot;&gt;→&lt;/div&gt;
+
+    &lt;div class=&quot;cq-stack&quot;&gt;
+      &lt;div class=&quot;cq-node&quot; data-tags=&quot;consumer dequeue&quot;&gt;
+        &lt;strong&gt;TryDequeue&lt;/strong&gt;
+        &lt;span&gt;采样 + 选择 + 兜底扫描&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;cq-node&quot; data-tags=&quot;consumer consumer-token&quot;&gt;
+        &lt;strong&gt;ConsumerToken&lt;/strong&gt;
+        &lt;span&gt;记住当前 Producer&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;cq-node&quot; data-tags=&quot;consumer lifecycle&quot;&gt;
+        &lt;strong&gt;TryDequeueBulk / Size&lt;/strong&gt;
+        &lt;span&gt;遍历 ProducerList&lt;/span&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;card cq-detail&quot; aria-live=&quot;polite&quot;&gt;
+    &lt;div class=&quot;cq-detail-head&quot;&gt;
+      &lt;span class=&quot;cq-kicker&quot; id=&quot;cq-stage-kicker&quot;&gt;架构&lt;/span&gt;
+      &lt;h2 id=&quot;cq-stage-title&quot;&gt;外层负责路由与仲裁，子队列负责真正存储&lt;/h2&gt;
+      &lt;p id=&quot;cq-stage-summary&quot;&gt;每个生产者只写自己的 SPMC 子队列，因此生产者之间不争抢同一个 Tail；多个消费者可以并发从任意子队列取元素。&lt;/p&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;cq-detail-grid&quot;&gt;
+      &lt;div&gt;
+        &lt;h3&gt;调用路径&lt;/h3&gt;
+        &lt;ol class=&quot;cq-steps&quot; id=&quot;cq-stage-steps&quot;&gt;&lt;/ol&gt;
+      &lt;/div&gt;
+      &lt;div&gt;
+        &lt;h3&gt;关键源码&lt;/h3&gt;
+        &lt;pre&gt;&lt;code id=&quot;cq-stage-code&quot;&gt;&lt;/code&gt;&lt;/pre&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div&gt;
+      &lt;h3&gt;这一阶段依赖的不变量&lt;/h3&gt;
+      &lt;ul class=&quot;cq-notes&quot; id=&quot;cq-stage-notes&quot;&gt;&lt;/ul&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section&gt;
+    &lt;h2&gt;三层职责&lt;/h2&gt;
+    &lt;div class=&quot;cq-section-grid&quot;&gt;
+      &lt;div class=&quot;cq-layer&quot;&gt;
+        &lt;h3&gt;1. 路由与登记&lt;/h3&gt;
+        &lt;p&gt;ProducerToken 直接持有节点；无 Token 路径通过 &lt;code&gt;thread_id&lt;/code&gt; 和 &lt;code&gt;ImplicitMap&lt;/code&gt; 找到节点。新节点用 CAS 挂到 ProducerList 头部。&lt;/p&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;cq-layer&quot;&gt;
+        &lt;h3&gt;2. 子队列存储&lt;/h3&gt;
+        &lt;p&gt;显式生产者使用 FastQueue，隐式生产者使用 SlowQueue。两者共享 Head/Tail 和 dequeue ticket 协议，但 Block 生命周期与索引结构不同。&lt;/p&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;cq-layer&quot;&gt;
+        &lt;h3&gt;3. 消费者仲裁&lt;/h3&gt;
+        &lt;p&gt;消费者不操作一条全局数据链，而是选择 ProducerList 中的一个节点，再调用该节点对应子队列的 Dequeue 或 DequeueBulk。&lt;/p&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section&gt;
+    &lt;h2&gt;外层核心状态&lt;/h2&gt;
+    &lt;div class=&quot;table-responsive&quot;&gt;
+      &lt;table class=&quot;table table-sm&quot;&gt;
+        &lt;thead&gt;
+          &lt;tr&gt;
+            &lt;th&gt;成员&lt;/th&gt;
+            &lt;th&gt;用途&lt;/th&gt;
+            &lt;th&gt;并发关系&lt;/th&gt;
+          &lt;/tr&gt;
+        &lt;/thead&gt;
+        &lt;tbody&gt;
+          &lt;tr&gt;
+            &lt;td&gt;&lt;code&gt;ProducerListsHead&lt;/code&gt;&lt;/td&gt;
+            &lt;td&gt;所有 FastQueue/SlowQueue 节点组成的单链表头&lt;/td&gt;
+            &lt;td&gt;生产者 CAS 插入，消费者 acquire 读取&lt;/td&gt;
+          &lt;/tr&gt;
+          &lt;tr&gt;
+            &lt;td&gt;&lt;code&gt;ProducerCount&lt;/code&gt;&lt;/td&gt;
+            &lt;td&gt;ConsumerToken 计算起始偏移与轮转位置&lt;/td&gt;
+            &lt;td&gt;创建/销毁节点时原子更新&lt;/td&gt;
+          &lt;/tr&gt;
+          &lt;tr&gt;
+            &lt;td&gt;&lt;code&gt;ImplicitMap&lt;/code&gt;&lt;/td&gt;
+            &lt;td&gt;把线程 ID 映射到该线程的 SlowQueue&lt;/td&gt;
+            &lt;td&gt;无 Token 入队路径共享访问&lt;/td&gt;
+          &lt;/tr&gt;
+          &lt;tr&gt;
+            &lt;td&gt;&lt;code&gt;GlobalExplicitConsumerOffset&lt;/code&gt;&lt;/td&gt;
+            &lt;td&gt;推动 ConsumerToken 周期性换一个偏好的 Producer&lt;/td&gt;
+            &lt;td&gt;消费配额达到 256 时递增&lt;/td&gt;
+          &lt;/tr&gt;
+          &lt;tr&gt;
+            &lt;td&gt;&lt;code&gt;ExplicitManager / ImplicitManager&lt;/code&gt;&lt;/td&gt;
+            &lt;td&gt;分别管理两类子队列使用的 Block&lt;/td&gt;
+            &lt;td&gt;FastQueue 偏本地保留，SlowQueue 偏及时归还&lt;/td&gt;
+          &lt;/tr&gt;
+        &lt;/tbody&gt;
+      &lt;/table&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section&gt;
+    &lt;h2&gt;为什么没有全局 FIFO&lt;/h2&gt;
+    &lt;div class=&quot;cq-order&quot; aria-label=&quot;两个生产者子队列独立保持 FIFO，消费者合并时顺序不固定&quot;&gt;
+      &lt;div class=&quot;cq-order-lane&quot;&gt;
+        &lt;div class=&quot;cq-item&quot;&gt;A1&lt;/div&gt;
+        &lt;div class=&quot;cq-item&quot;&gt;A2&lt;/div&gt;
+        &lt;div class=&quot;cq-item&quot;&gt;A3&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;cq-merge&quot;&gt;消费者选择子队列&lt;br&gt;→ 合并顺序由竞争决定 →&lt;/div&gt;
+      &lt;div class=&quot;cq-order-lane&quot;&gt;
+        &lt;div class=&quot;cq-item&quot;&gt;B1&lt;/div&gt;
+        &lt;div class=&quot;cq-item&quot;&gt;B2&lt;/div&gt;
+        &lt;div class=&quot;cq-item&quot;&gt;B3&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;cq-callout&quot;&gt;
+      &lt;strong&gt;保证&lt;/strong&gt;
+      &lt;p&gt;同一个 Producer 子队列内部保持 FIFO：A1 一定早于 A2，B1 一定早于 B2。但 A2 与 B1 之间没有统一的全局先后保证。&lt;/p&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section&gt;
+    &lt;h2&gt;实现上的核心取舍&lt;/h2&gt;
+    &lt;div class=&quot;table-responsive&quot;&gt;
+      &lt;table class=&quot;table table-sm&quot;&gt;
+        &lt;thead&gt;
+          &lt;tr&gt;
+            &lt;th&gt;如果使用一条全局队列&lt;/th&gt;
+            &lt;th&gt;当前分片设计&lt;/th&gt;
+          &lt;/tr&gt;
+        &lt;/thead&gt;
+        &lt;tbody&gt;
+          &lt;tr&gt;
+            &lt;td&gt;所有生产者争抢一个 Tail&lt;/td&gt;
+            &lt;td&gt;每个生产者只推进自己的 Tail&lt;/td&gt;
+          &lt;/tr&gt;
+          &lt;tr&gt;
+            &lt;td&gt;入队容易形成缓存行竞争&lt;/td&gt;
+            &lt;td&gt;入队扩展性更好&lt;/td&gt;
+          &lt;/tr&gt;
+          &lt;tr&gt;
+            &lt;td&gt;消费者天然知道队头位置&lt;/td&gt;
+            &lt;td&gt;消费者必须扫描或记住一个 Producer&lt;/td&gt;
+          &lt;/tr&gt;
+          &lt;tr&gt;
+            &lt;td&gt;较容易提供全局 FIFO&lt;/td&gt;
+            &lt;td&gt;只提供每个 Producer 内部 FIFO&lt;/td&gt;
+          &lt;/tr&gt;
+        &lt;/tbody&gt;
+      &lt;/table&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;script&gt;
+    (() =&gt; {
+      const root = document.getElementById(&#x27;cq-implementation-explainer&#x27;);
+      if (!root) return;
+
+      const stages = {
+        overview: {
+          kicker: &#x27;架构&#x27;,
+          title: &#x27;外层负责路由与仲裁，子队列负责真正存储&#x27;,
+          summary: &#x27;每个生产者只写自己的 SPMC 子队列，因此生产者之间不争抢同一个 Tail；多个消费者可以并发从任意子队列取元素。&#x27;,
+          tags: [&#x27;api&#x27;, &#x27;route&#x27;, &#x27;register&#x27;, &#x27;list&#x27;, &#x27;fast&#x27;, &#x27;slow&#x27;, &#x27;consumer&#x27;],
+          steps: [
+            &#x27;生产者进入显式 Token 路径或隐式线程路径。&#x27;,
+            &#x27;外层定位一个 ProducerListNode，节点内部持有 FastQueue 或 SlowQueue。&#x27;,
+            &#x27;真正的 Enqueue、Head/Tail 和 Block 管理由子队列完成。&#x27;,
+            &#x27;消费者扫描 ProducerList，选定节点后调用其 Dequeue。&#x27;
+          ],
+          code: &#x27;using ExplicitProducer = FastQueue&lt;...&gt;;\nusing ImplicitProducer = SlowQueue&lt;...&gt;;\n\nstd::atomic&lt;ProducerListNode*&gt; ProducerListsHead;\nHashTable&lt;thread_id_t, ImplicitProducer*&gt; ImplicitMap;&#x27;,
+          notes: [
+            &#x27;每个子队列只有一个生产者，但允许多个消费者。&#x27;,
+            &#x27;整体 MPMC 来自多个 SPMC 子队列的组合。&#x27;,
+            &#x27;ProducerList 节点在队列析构前保持有效，消费者可以安全遍历。&#x27;
+          ]
+        },
+        explicit: {
+          kicker: &#x27;显式生产者&#x27;,
+          title: &#x27;ProducerToken 把路由结果缓存成一个稳定指针&#x27;,
+          summary: &#x27;创建 Token 时分配或复用一个 Explicit 节点；之后每次入队都能直接跳到 FastQueue，不需要线程 ID 哈希查找。&#x27;,
+          tags: [&#x27;explicit&#x27;, &#x27;fast&#x27;, &#x27;register&#x27;],
+          steps: [
+            &#x27;GetProducerToken() 构造 ProducerToken。&#x27;,
+            &#x27;ProducerToken 调用 GetProducerListNode(Explicit)，优先复用 Inactive 节点。&#x27;,
+            &#x27;EnqueueWithToken() 通过 Token.ProducerNode 直接调用 ProducerEnqueue。&#x27;,
+            &#x27;节点根据 Type 转发到 FastQueue::Enqueue。&#x27;
+          ],
+          code: &#x27;ProducerToken(queue)\n  -&gt; GetProducerListNode(Explicit)\n\nEnqueueWithToken(token, value)\n  -&gt; token.ProducerNode-&gt;ProducerEnqueue(...)\n  -&gt; FastQueue::Enqueue(...)&#x27;,
+          notes: [
+            &#x27;同一个 ProducerToken 不能被多个生产者并发使用。&#x27;,
+            &#x27;Token 析构不会删除节点，只会把节点标成 Inactive 供未来 Token 复用。&#x27;,
+            &#x27;FastQueue 会保留自己的 Block 环，适合长期高频生产者。&#x27;
+          ]
+        },
+        implicit: {
+          kicker: &#x27;隐式生产者&#x27;,
+          title: &#x27;无 Token 入队通过 thread_id 找到当前线程的 SlowQueue&#x27;,
+          summary: &#x27;调用更方便，但每次必须经过 GetOrAddImplicitProducer 和 ImplicitMap；首次出现的线程还要创建并登记一个 SlowQueue 节点。&#x27;,
+          tags: [&#x27;implicit&#x27;, &#x27;slow&#x27;, &#x27;register&#x27;],
+          steps: [
+            &#x27;Enqueue() 进入 InnerEnqueue。&#x27;,
+            &#x27;读取 details::thread_id()。&#x27;,
+            &#x27;ImplicitMap.GetOrAddByFunc 查找该线程已有的 SlowQueue。&#x27;,
+            &#x27;没有映射时创建 Implicit ProducerListNode，再调用 SlowQueue::Enqueue。&#x27;
+          ],
+          code: &#x27;thread_id = details::thread_id();\n\nImplicitMap.GetOrAddByFunc(\n  thread_id, producer,\n  [] { create SlowQueue node; }\n);\n\nproducer-&gt;Enqueue(...);&#x27;,
+          notes: [
+            &#x27;SlowQueue 本身仍然是单生产者，不是多个线程共享一个 SlowQueue。&#x27;,
+            &#x27;线程 ID 映射是便利性成本，也是无 Token 路径比 Token 路径慢的原因之一。&#x27;,
+            &#x27;SlowQueue 的 Block 清空后会归还 BlockManager。&#x27;
+          ]
+        },
+        register: {
+          kicker: &#x27;节点登记&#x27;,
+          title: &#x27;ProducerList 只在头部进行 CAS 插入&#x27;,
+          summary: &#x27;节点创建完成后，把当前 Head 写入 Node-&gt;Next，再用 compare_exchange_weak 把新节点发布为 Head。失败时使用被更新的 Head 重试。&#x27;,
+          tags: [&#x27;register&#x27;, &#x27;list&#x27;, &#x27;fast&#x27;, &#x27;slow&#x27;],
+          steps: [
+            &#x27;GetProducerListNode 先扫描同类型 Inactive 节点并用 CAS 尝试激活。&#x27;,
+            &#x27;没有可复用节点时创建 FastQueue/SlowQueue 和 ProducerListNode。&#x27;,
+            &#x27;ProducerCount 原子加一。&#x27;,
+            &#x27;compare_exchange_weak(release) 把节点插入链表头。&#x27;
+          ],
+          code: &#x27;Head = ProducerListsHead.load(relaxed);\ndo {\n  Node-&gt;Next = Head;\n} while (!ProducerListsHead.compare_exchange_weak(\n  Head, Node, release, relaxed\n));&#x27;,
+          notes: [
+            &#x27;发布成功前，Node 及其子队列已经完整构造。&#x27;,
+            &#x27;消费者 acquire 读取 Head 后，可以看到节点构造期间的写入。&#x27;,
+            &#x27;运行期间节点不从链表中删除，避免遍历消费者遭遇悬空指针。&#x27;
+          ]
+        },
+        dequeue: {
+          kicker: &#x27;无 ConsumerToken 出队&#x27;,
+          title: &#x27;先采样最多三个非空 Producer，再优先尝试其中最大的&#x27;,
+          summary: &#x27;普通 TryDequeue 不固定绑定某个生产者。它先估算子队列大小选择候选；候选因并发竞争失败后，再扫描其他 Producer。&#x27;,
+          tags: [&#x27;dequeue&#x27;, &#x27;consumer&#x27;, &#x27;list&#x27;, &#x27;fast&#x27;, &#x27;slow&#x27;],
+          steps: [
+            &#x27;从 ProducerListsHead 开始遍历。&#x27;,
+            &#x27;遇到非空子队列就累计 NonEmptyCount，并记录 Size 最大的 Best。&#x27;,
+            &#x27;找到三个非空子队列后停止采样，先对 Best 执行 Dequeue。&#x27;,
+            &#x27;Best 失败时跳过 Best，遍历其余节点作为兜底。&#x27;
+          ],
+          code: &#x27;scan until NonEmptyCount == 3;\nBest = largest sampled producer;\n\nif (Best-&gt;ProducerDequeue(value))\n  return true;\n\nscan every Node != Best;&#x27;,
+          notes: [
+            &#x27;Size() 是并发环境下的近似快照，只用于启发式选择。&#x27;,
+            &#x27;真正能否成功由子队列的 dequeue ticket 协议决定。&#x27;,
+            &#x27;选择较大的子队列倾向于减少积压，但不提供全局 FIFO。&#x27;
+          ]
+        },
+        &#x27;consumer-token&#x27;: {
+          kicker: &#x27;带 ConsumerToken 出队&#x27;,
+          title: &#x27;ConsumerToken 记住 CurrentProducer，减少每次从 Head 扫描&#x27;,
+          summary: &#x27;Token 为不同消费者选择不同起始偏移，并让消费者在一个 Producer 上连续消费；达到配额或失败时再推动轮转。&#x27;,
+          tags: [&#x27;consumer-token&#x27;, &#x27;consumer&#x27;, &#x27;list&#x27;, &#x27;fast&#x27;, &#x27;slow&#x27;],
+          steps: [
+            &#x27;InitialOffset 由 NextExplicitConsumerId.fetch_add 获得。&#x27;,
+            &#x27;UpdateProducerForConsumer 根据 ProducerCount 和全局 offset 选择 DesiredProducer。&#x27;,
+            &#x27;优先从 CurrentProducer 取元素。&#x27;,
+            &#x27;连续消费达到 256 时增加全局 offset；当前节点失败时环形扫描其他节点。&#x27;
+          ],
+          code: &#x27;if (producer changed)\n  UpdateProducerForConsumer(token);\n\ntry token.CurrentProducer;\nif (++ItemsConsumed == 256)\n  GlobalOffset.fetch_add(1);\n\non failure: circular scan;&#x27;,
+          notes: [
+            &#x27;Token 保存的是遍历偏好，不会把消费者永久锁定到一个 Producer。&#x27;,
+            &#x27;不同 ConsumerToken 的 InitialOffset 用于分散起始热点。&#x27;,
+            &#x27;ProducerList 实际是 null 结尾单链表，扫描时手动从末尾绕回 Head。&#x27;
+          ]
+        },
+        lifecycle: {
+          kicker: &#x27;批量、统计与生命周期&#x27;,
+          title: &#x27;Bulk 和 Size 都在外层聚合多个子队列&#x27;,
+          summary: &#x27;外层只负责遍历与累计；每个节点仍由 FastQueue/SlowQueue 自己执行批量操作、销毁元素和管理 Block。&#x27;,
+          tags: [&#x27;lifecycle&#x27;, &#x27;consumer&#x27;, &#x27;list&#x27;, &#x27;fast&#x27;, &#x27;slow&#x27;],
+          steps: [
+            &#x27;TryDequeueBulk 逐个调用 ProducerDequeueBulk，直到达到 MaxCount。&#x27;,
+            &#x27;Size 遍历节点并累加每个子队列的近似 Size。&#x27;,
+            &#x27;ProducerToken 析构把节点标成 Inactive，节点留在链表中等待复用。&#x27;,
+            &#x27;ConcurrentQueue 析构时 ClearList 才真正销毁所有节点与子队列。&#x27;
+          ],
+          code: &#x27;for (Node : ProducerList) {\n  count += Node-&gt;ProducerDequeueBulk(...);\n}\n\nProducerToken::~ProducerToken() {\n  Node-&gt;Inactive.store(true, release);\n}\n\n~ConcurrentQueue() { ClearList(); }&#x27;,
+          notes: [
+            &#x27;节点地址稳定是无锁遍历简单化的关键。&#x27;,
+            &#x27;FastQueue 和 SlowQueue 的资源释放策略不同，但外层通过 ProducerListNode 统一分派。&#x27;,
+            &#x27;清理或析构要求外部已经停止并发访问。&#x27;
+          ]
+        }
+      };
+
+      const buttons = Array.from(root.querySelectorAll(&#x27;[data-stage]&#x27;));
+      const nodes = Array.from(root.querySelectorAll(&#x27;[data-tags]&#x27;));
+      const kicker = root.querySelector(&#x27;#cq-stage-kicker&#x27;);
+      const title = root.querySelector(&#x27;#cq-stage-title&#x27;);
+      const summary = root.querySelector(&#x27;#cq-stage-summary&#x27;);
+      const steps = root.querySelector(&#x27;#cq-stage-steps&#x27;);
+      const code = root.querySelector(&#x27;#cq-stage-code&#x27;);
+      const notes = root.querySelector(&#x27;#cq-stage-notes&#x27;);
+
+      function fillList(element, items) {
+        element.replaceChildren(...items.map((item) =&gt; {
+          const li = document.createElement(&#x27;li&#x27;);
+          li.textContent = item;
+          return li;
+        }));
+      }
+
+      function selectStage(key) {
+        const stage = stages[key];
+        if (!stage) return;
+
+        buttons.forEach((button) =&gt; {
+          const selected = button.dataset.stage === key;
+          button.setAttribute(&#x27;aria-pressed&#x27;, String(selected));
+          button.classList.toggle(&#x27;btn-primary&#x27;, selected);
+        });
+
+        nodes.forEach((node) =&gt; {
+          const tags = (node.dataset.tags || &#x27;&#x27;).split(/\s+/);
+          const active = stage.tags.some((tag) =&gt; tags.includes(tag));
+          node.classList.toggle(&#x27;is-active&#x27;, active);
+          node.classList.toggle(&#x27;is-dim&#x27;, !active);
+        });
+
+        kicker.textContent = stage.kicker;
+        title.textContent = stage.title;
+        summary.textContent = stage.summary;
+        code.textContent = stage.code;
+        fillList(steps, stage.steps);
+        fillList(notes, stage.notes);
+      }
+
+      buttons.forEach((button) =&gt; {
+        button.addEventListener(&#x27;click&#x27;, () =&gt; selectStage(button.dataset.stage));
+      });
+
+      selectStage(&#x27;overview&#x27;);
+    })();
+  &lt;/script&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

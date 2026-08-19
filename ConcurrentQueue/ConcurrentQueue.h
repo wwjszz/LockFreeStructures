@@ -108,6 +108,16 @@ concept HasMakeImplicitBlockManager = HasMakeImplicitBlockManagerHelper<Traits>:
 
 #endif
 
+// Optional per-traits switch for the token-less consumer fast path.  It is on
+// by default because it removes the repeated producer-list scoring scan from
+// the implicit dequeue hot path; custom traits can opt out with
+// `static constexpr bool UseImplicitConsumerCache = false;`.
+template <class Traits, class = void>
+struct UseImplicitConsumerCache : std::true_type {};
+
+template <class Traits>
+struct UseImplicitConsumerCache<Traits, VoidT<decltype( Traits::UseImplicitConsumerCache )>> : std::bool_constant<Traits::UseImplicitConsumerCache> {};
+
 struct _QueueTypelessBase {};
 
 // TODO: manager traits
@@ -1396,6 +1406,7 @@ struct ConcurrentQueueDefaultTraits {
     static constexpr std::size_t InitialHashSize          = 32;
     static constexpr std::size_t InitialExplicitQueueSize = 32;
     static constexpr std::size_t InitialImplicitQueueSize = 32;
+    static constexpr bool        UseImplicitConsumerCache = true;
 
     using AllocatorType = Allocator;
 
@@ -1523,6 +1534,7 @@ public:
         ForEachProducerSafe( [ this ]( ProducerListNode* Node ) { DeleteProducerListNode( Node ); } );
         ProducerListsHead.store( nullptr, std::memory_order_relaxed );
         ProducerCount.store( 0, std::memory_order_relaxed );
+        RefreshImplicitProducerCacheId();
     }
 
     HAKLE_CPP14_CONSTEXPR void Reset() noexcept {
@@ -1589,29 +1601,84 @@ public:
 
     template <class U>
     HAKLE_CPP14_CONSTEXPR bool TryDequeue( U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), T&&> ) {
-        std::size_t       NonEmptyCount = 0;
-        ProducerListNode* Best          = nullptr;
-        std::size_t       BestSize      = 0;
-        ForEachProducerWithBreak( [ &NonEmptyCount, &Best, &BestSize ]( ProducerListNode* Node ) -> bool {
-            std::size_t Size = Node->GetProducerSize();
-            if ( Size > 0 ) {
-                ++NonEmptyCount;
-                if ( Size > BestSize ) {
-                    BestSize = Size;
-                    Best     = Node;
+        HAKLE_CONSTEXPR_IF( UseImplicitConsumerCache<Traits>::value ) {
+            LocalConsumerCache& Cache = LocalConsumerCacheInstance();
+            if ( HAKLE_UNLIKELY( Cache.Queue != this || Cache.QueueId != ImplicitProducerCacheId ) ) {
+                Cache.Queue   = this;
+                Cache.QueueId = ImplicitProducerCacheId;
+                Cache.Token   = ConsumerToken{ *this };
+            }
+
+            ConsumerToken& Token = Cache.Token;
+            if ( Token.DesiredProducer == nullptr || Token.LastKnownGlobalOffset != GlobalExplicitConsumerOffset().load( std::memory_order_relaxed ) || Token.LastKnownProducerCount != ProducerCount.load( std::memory_order_relaxed ) ) {
+                if ( !UpdateProducerForConsumer( Token ) ) {
+                    return false;
                 }
             }
-            return NonEmptyCount < 3;
-        } );
 
-        if ( NonEmptyCount > 0 ) {
-            if ( Best->ProducerDequeue( Element ) ) {
+            if ( Token.CurrentProducer->ProducerDequeue( Element ) ) {
+                if ( ++Token.ItemsConsumed == EXPLICIT_CONSUMER_CONSUMPTION_QUOTA_BEFORE_ROTATE ) {
+                    GlobalExplicitConsumerOffset().fetch_add( 1, std::memory_order_relaxed );
+                }
                 return true;
             }
 
-            return ForEachProducerWithReturn( [ &Element, Best ]( ProducerListNode* Node ) -> bool { return Node != Best && Node->ProducerDequeue( Element ); } );
+            ProducerListNode* Head = ProducerListsHead.load( std::memory_order_acquire );
+            ProducerListNode* Node = Token.CurrentProducer->Next;
+            if ( Node == nullptr ) {
+                Node = Head;
+            }
+            while ( Node != Token.CurrentProducer ) {
+                if ( Node->ProducerDequeue( Element ) ) {
+                    Token.CurrentProducer = Node;
+                    Token.ItemsConsumed   = 1;
+                    return true;
+                }
+                Node = Node->Next;
+                if ( Node == nullptr ) {
+                    Node = Head;
+                }
+            }
+            return false;
         }
-        return false;
+        else {
+            std::size_t       NonEmptyCount = 0;
+            ProducerListNode* Best          = nullptr;
+            std::size_t       BestSize      = 0;
+            ForEachProducerWithBreak( [ &NonEmptyCount, &Best, &BestSize ]( ProducerListNode* Node ) -> bool {
+                std::size_t Size = Node->GetProducerSize();
+                if ( Size > 0 ) {
+                    ++NonEmptyCount;
+                    if ( Size > BestSize ) {
+                        BestSize = Size;
+                        Best     = Node;
+                    }
+                }
+                return NonEmptyCount < 3;
+            } );
+
+            if ( NonEmptyCount > 0 ) {
+                if ( Best->ProducerDequeue( Element ) ) {
+                    return true;
+                }
+
+                ProducerListNode* Head = ProducerListsHead.load( std::memory_order_acquire );
+                ProducerListNode* Node = Best->Next;
+                if ( Node == nullptr ) {
+                    Node = Head;
+                }
+                while ( Node != Best ) {
+                    if ( Node->ProducerDequeue( Element ) ) {
+                        return true;
+                    }
+                    Node = Node->Next;
+                    if ( Node == nullptr ) {
+                        Node = Head;
+                    }
+                }
+            }
+            return false;
+        }
     }
 
     template <class U>
@@ -1656,12 +1723,60 @@ public:
 
     template <HAKLE_CONCEPT( std::output_iterator<T&&> ) Iterator>
     std::size_t TryDequeueBulk( Iterator ItemFirst, std::size_t MaxCount ) {
-        std::size_t Count = 0;
-        ForEachProducerWithBreak( [ &ItemFirst, &MaxCount, &Count ]( ProducerListNode* Node ) -> bool {
-            Count += Node->ProducerDequeueBulk( std::next( ItemFirst, Count ), MaxCount - Count );
-            return Count != MaxCount;
-        } );
-        return Count;
+        HAKLE_CONSTEXPR_IF( UseImplicitConsumerCache<Traits>::value ) {
+            LocalConsumerCache& Cache = LocalConsumerCacheInstance();
+            if ( HAKLE_UNLIKELY( Cache.Queue != this || Cache.QueueId != ImplicitProducerCacheId ) ) {
+                Cache.Queue   = this;
+                Cache.QueueId = ImplicitProducerCacheId;
+                Cache.Token   = ConsumerToken{ *this };
+            }
+
+            ConsumerToken& Token = Cache.Token;
+            if ( Token.DesiredProducer == nullptr || Token.LastKnownGlobalOffset != GlobalExplicitConsumerOffset().load( std::memory_order_relaxed ) || Token.LastKnownProducerCount != ProducerCount.load( std::memory_order_relaxed ) ) {
+                if ( !UpdateProducerForConsumer( Token ) ) {
+                    return 0;
+                }
+            }
+
+            std::size_t Count = Token.CurrentProducer->ProducerDequeueBulk( ItemFirst, MaxCount );
+            Token.ItemsConsumed += Count;
+            if ( Count == MaxCount ) {
+                if ( Token.ItemsConsumed >= EXPLICIT_CONSUMER_CONSUMPTION_QUOTA_BEFORE_ROTATE || Count >= EXPLICIT_CONSUMER_CONSUMPTION_QUOTA_BEFORE_ROTATE ) {
+                    GlobalExplicitConsumerOffset().fetch_add( 1, std::memory_order_relaxed );
+                }
+                return Count;
+            }
+
+            ProducerListNode* Head = ProducerListsHead.load( std::memory_order_acquire );
+            ProducerListNode* Node = Token.CurrentProducer->Next;
+            if ( Node == nullptr ) {
+                Node = Head;
+            }
+            while ( Node != Token.CurrentProducer ) {
+                const std::size_t Dequeued = Node->ProducerDequeueBulk( std::next( ItemFirst, Count ), MaxCount - Count );
+                Count += Dequeued;
+                if ( Dequeued != 0 ) {
+                    Token.CurrentProducer = Node;
+                    Token.ItemsConsumed   = Dequeued;
+                }
+                if ( Count == MaxCount ) {
+                    break;
+                }
+                Node = Node->Next;
+                if ( Node == nullptr ) {
+                    Node = Head;
+                }
+            }
+            return Count;
+        }
+        else {
+            std::size_t Count = 0;
+            ForEachProducerWithBreak( [ &ItemFirst, &MaxCount, &Count ]( ProducerListNode* Node ) -> bool {
+                Count += Node->ProducerDequeueBulk( std::next( ItemFirst, Count ), MaxCount - Count );
+                return Count != MaxCount;
+            } );
+            return Count;
+        }
     }
 
     template <HAKLE_CONCEPT( std::output_iterator<T&&> ) Iterator>
@@ -1707,12 +1822,12 @@ public:
 
     template <class U>
     constexpr bool TryDequeueFromProducer( const ProducerToken& Token, U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), T&&> ) {
-        return Token.ProducerNode->ProducerDequeue( Element );
+        return Token.ProducerNode->GetExplicitProducer()->Dequeue( Element );
     }
 
     template <HAKLE_CONCEPT( std::output_iterator<T&&> ) Iterator>
     std::size_t TryDequeueBulkFromProducer( const ProducerToken& Token, Iterator ItemFirst, std::size_t MaxCount ) {
-        return Token.ProducerNode->ProducerDequeueBulk( ItemFirst, MaxCount );
+        return Token.ProducerNode->GetExplicitProducer()->DequeueBulk( ItemFirst, MaxCount );
     }
 
     HAKLE_CPP14_CONSTEXPR std::size_t Size() noexcept {
@@ -1767,9 +1882,11 @@ public:
         friend class ConcurrentQueue;
 
         // TODO: memory_order
+        ConsumerToken() noexcept = default;
         explicit ConsumerToken( ConcurrentQueue& queue ) noexcept : InitialOffset( queue.NextExplicitConsumerId().fetch_add( 1, std::memory_order_relaxed ) ) {}
         ConsumerToken( ConsumerToken&& Other ) noexcept
-            : InitialOffset( Other.InitialOffset ), LastKnownGlobalOffset( Other.LastKnownGlobalOffset ), ItemsConsumed( Other.ItemsConsumed ), CurrentProducer( Other.CurrentProducer ), DesiredProducer( Other.DesiredProducer ) {}
+            : InitialOffset( Other.InitialOffset ), LastKnownGlobalOffset( Other.LastKnownGlobalOffset ), ItemsConsumed( Other.ItemsConsumed ), LastKnownProducerCount( Other.LastKnownProducerCount ), CurrentProducer( Other.CurrentProducer ),
+              DesiredProducer( Other.DesiredProducer ) {}
 
         ConsumerToken& operator=( ConsumerToken&& Other ) noexcept {
             swap( Other );
@@ -1781,6 +1898,7 @@ public:
             swap( InitialOffset, Other.InitialOffset );
             swap( ItemsConsumed, Other.ItemsConsumed );
             swap( LastKnownGlobalOffset, Other.LastKnownGlobalOffset );
+            swap( LastKnownProducerCount, Other.LastKnownProducerCount );
             swap( CurrentProducer, Other.CurrentProducer );
             swap( DesiredProducer, Other.DesiredProducer );
         }
@@ -1792,6 +1910,7 @@ public:
         std::uint32_t     InitialOffset{};
         std::uint32_t     LastKnownGlobalOffset{ static_cast<std::uint32_t>( -1 ) };
         std::size_t       ItemsConsumed{};
+        std::uint32_t     LastKnownProducerCount{ 0 };
         ProducerListNode* CurrentProducer{};
         ProducerListNode* DesiredProducer{};
     };
@@ -1800,7 +1919,7 @@ private:
     template <AllocMode Alloc, class... Args>
     HAKLE_REQUIRES( std::is_constructible_v<T, Args...> )
     constexpr bool InnerEnqueueWithToken( const ProducerToken& Token, Args&&... args ) {
-        return Token.ProducerNode->template ProducerEnqueue<Alloc>( std::forward<Args>( args )... );
+        return Token.ProducerNode->GetExplicitProducer()->template Enqueue<Alloc>( std::forward<Args>( args )... );
     }
 
     template <AllocMode Alloc, class... Args>
@@ -1813,7 +1932,7 @@ private:
     template <AllocMode Alloc, HAKLE_CONCEPT( std::input_iterator ) Iterator>
     HAKLE_REQUIRES( requires( Iterator Item ) { T( *Item ); } )
     constexpr bool InnerEnqueueBulk( const ProducerToken& Token, Iterator ItermFirst, std::size_t Count ) {
-        return Token.ProducerNode->template ProducerEnqueueBulk<Alloc>( ItermFirst, Count );
+        return Token.ProducerNode->GetExplicitProducer()->template EnqueueBulk<Alloc>( ItermFirst, Count );
     }
 
     template <AllocMode Alloc, HAKLE_CONCEPT( std::input_iterator ) Iterator>
@@ -2005,7 +2124,11 @@ private:
             return false;
         std::uint32_t ProducerCount = this->ProducerCount.load( std::memory_order_relaxed );
         std::uint32_t GlobalOffset  = GlobalExplicitConsumerOffset().load( std::memory_order_relaxed );
-        if HAKLE_UNLIKELY ( Token.DesiredProducer == nullptr ) {
+        if HAKLE_UNLIKELY ( Token.DesiredProducer == nullptr || Token.LastKnownProducerCount != ProducerCount ) {
+            // The producer list changed since this token last sampled it
+            // (notably, implicit producers are created lazily on first use).
+            // Re-anchor the token so concurrent consumers do not all pile onto
+            // the first producer that appeared.
             std::uint32_t Offset  = Token.InitialOffset % ProducerCount;
             Token.DesiredProducer = Head;
             for ( std::uint32_t i = 0; i < Offset; ++i ) {
@@ -2014,6 +2137,7 @@ private:
                     Token.DesiredProducer = Head;
                 }
             }
+            Token.LastKnownProducerCount = ProducerCount;
         }
 
         std::uint32_t Delta = GlobalOffset - Token.LastKnownGlobalOffset;
@@ -2040,8 +2164,19 @@ private:
         ImplicitProducer*      Producer{};
     };
 
+    struct LocalConsumerCache {
+        const ConcurrentQueue* Queue{};
+        std::uint64_t          QueueId{};
+        ConsumerToken          Token{};
+    };
+
     static ImplicitProducerCache& LocalImplicitProducerCache() noexcept {
         static thread_local ImplicitProducerCache Cache;
+        return Cache;
+    }
+
+    static LocalConsumerCache& LocalConsumerCacheInstance() noexcept {
+        static thread_local LocalConsumerCache Cache;
         return Cache;
     }
 

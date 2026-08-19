@@ -158,6 +158,24 @@ void test_fast_queue_bulk_failure_keeps_preallocated_block_reusable() {
   CHECK(output == 42);
 }
 
+void test_word_flags_policy_fast_queue() {
+    using block_type   = hakle::HakleWordFlagsBlock<int, 32>;
+    using manager_type = hakle::HakleBlockManager<block_type>;
+    manager_type                                                                    manager( 4 );
+    hakle::FastQueue<int, 32, hakle::HakleAllocator<int>, block_type, manager_type> queue( 2, &manager );
+
+    for ( int value = 1; value <= 64; ++value ) {
+        CHECK( queue.template Enqueue<hakle::AllocMode::CanAlloc>( value ) );
+    }
+
+    int output = 0;
+    for ( int expected = 1; expected <= 64; ++expected ) {
+        CHECK( queue.Dequeue( output ) );
+        CHECK( output == expected );
+    }
+    CHECK( !queue.Dequeue( output ) );
+}
+
 void test_bulk_operations_with_producer_token() {
   queue_type queue;
   auto producer = queue.GetProducerToken();
@@ -254,6 +272,7 @@ int main() {
   runner.run("zero-length bulk enqueue", test_zero_length_bulk_enqueue_is_a_no_op);
   runner.run("FastQueue bulk failure rollback",
              test_fast_queue_bulk_failure_keeps_preallocated_block_reusable);
+  runner.run( "WordFlags policy FastQueue", test_word_flags_policy_fast_queue );
   runner.run("token bulk enqueue and dequeue", test_bulk_operations_with_producer_token);
   runner.run("move-only values", test_move_only_values);
   runner.run("move construction and swap", test_move_construction_and_swap_preserve_contents);
