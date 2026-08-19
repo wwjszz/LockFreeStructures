@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <memory>
+#include <new>
 #include <numeric>
 #include <type_traits>
 #include <utility>
@@ -13,6 +14,39 @@
 namespace {
 
 using queue_type = hakle::ConcurrentQueue<int>;
+
+class single_block_manager {
+public:
+  static constexpr std::size_t BlockSize = 32;
+  using BlockType = hakle::HakleFlagsBlock<int, 32>;
+  using ValueType = int;
+  using AllocMode = hakle::AllocMode;
+
+  BlockType *RequisitionBlock(AllocMode) noexcept {
+    if (!available_) {
+      return nullptr;
+    }
+    available_ = false;
+    return &block_;
+  }
+
+  void ReturnBlock(BlockType *block) noexcept {
+    (void)block;
+    available_ = true;
+  }
+
+  void ReturnBlocks(BlockType *block) noexcept {
+    while (block != nullptr) {
+      BlockType *next = block->Next;
+      ReturnBlock(block);
+      block = next == block ? nullptr : next;
+    }
+  }
+
+private:
+  BlockType block_{};
+  bool available_{true};
+};
 
 static_assert(std::movable<queue_type>);
 static_assert(!std::copy_constructible<queue_type>);
@@ -44,6 +78,20 @@ void test_implicit_producer_fifo() {
   CHECK(value == 33);
   CHECK(!queue.TryDequeue(value));
   CHECK(queue.Size() == 0);
+}
+
+void test_implicit_producer_cache_handles_queue_address_reuse() {
+  alignas(queue_type) std::byte queue_storage[sizeof(queue_type)];
+
+  for (int iteration = 0; iteration != 8; ++iteration) {
+    auto *queue = std::construct_at(reinterpret_cast<queue_type *>(queue_storage));
+    CHECK(queue->Enqueue(iteration));
+
+    int value = -1;
+    CHECK(queue->TryDequeue(value));
+    CHECK(value == iteration);
+    std::destroy_at(queue);
+  }
 }
 
 void test_explicit_tokens() {
@@ -80,6 +128,34 @@ void test_bulk_operations() {
 
   CHECK(output == input);
   CHECK(queue.Size() == 0);
+}
+
+void test_zero_length_bulk_enqueue_is_a_no_op() {
+  queue_type queue;
+  auto producer = queue.GetProducerToken();
+  int value = 7;
+
+  CHECK(queue.EnqueueBulk(&value, 0));
+  CHECK(queue.EnqueueBulk(producer, &value, 0));
+  CHECK(queue.TryEnqueueBulk(&value, 0));
+  CHECK(queue.TryEnqueueBulk(producer, &value, 0));
+  CHECK(queue.Size() == 0);
+}
+
+void test_fast_queue_bulk_failure_keeps_preallocated_block_reusable() {
+  single_block_manager manager;
+  using fast_queue_type =
+      hakle::FastQueue<int, 32, hakle::HakleAllocator<int>,
+                       single_block_manager::BlockType, single_block_manager>;
+  fast_queue_type queue(2, &manager);
+  std::array<int, 33> values{};
+
+  CHECK(!queue.EnqueueBulk<hakle::AllocMode::CannotAlloc>(values.begin(), values.size()));
+  CHECK(queue.Enqueue<hakle::AllocMode::CannotAlloc>(42));
+
+  int output = 0;
+  CHECK(queue.Dequeue(output));
+  CHECK(output == 42);
 }
 
 void test_bulk_operations_with_producer_token() {
@@ -171,8 +247,13 @@ int main() {
   lockfree_test::test_runner runner;
   runner.run("empty queue", test_empty_queue);
   runner.run("implicit producer FIFO", test_implicit_producer_fifo);
+  runner.run("implicit producer cache handles queue address reuse",
+             test_implicit_producer_cache_handles_queue_address_reuse);
   runner.run("explicit producer and consumer tokens", test_explicit_tokens);
   runner.run("bulk enqueue and dequeue", test_bulk_operations);
+  runner.run("zero-length bulk enqueue", test_zero_length_bulk_enqueue_is_a_no_op);
+  runner.run("FastQueue bulk failure rollback",
+             test_fast_queue_bulk_failure_keeps_preallocated_block_reusable);
   runner.run("token bulk enqueue and dequeue", test_bulk_operations_with_producer_token);
   runner.run("move-only values", test_move_only_values);
   runner.run("move construction and swap", test_move_construction_and_swap_preserve_contents);

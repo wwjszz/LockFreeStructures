@@ -8,11 +8,28 @@
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
-#include <functional>
+#include <cstdint>
+#include <cstring>
 #include <memory>
-#include <thread>
 #include <type_traits>
 #include <utility>
+
+#if defined( _WIN32 )
+#ifndef NOMINMAX
+#define NOMINMAX
+#define HAKLE_UNDEFINE_NOMINMAX
+#endif
+#include <Windows.h>
+#ifdef HAKLE_UNDEFINE_NOMINMAX
+#undef NOMINMAX
+#undef HAKLE_UNDEFINE_NOMINMAX
+#endif
+#elif defined( __unix__ ) || defined( __APPLE__ )
+#include <pthread.h>
+#else
+#include <functional>
+#include <thread>
+#endif
 
 #ifdef HAKLE_USE_CONCEPT
 #include <concepts>
@@ -24,15 +41,33 @@
 #include "common/CompressPair.h"
 #include "common/allocator.h"
 #include "common/common.h"
+#include "common/memory.h"
 #include "common/utility.h"
 
 namespace hakle {
 
 namespace details {
+#if defined( _WIN32 )
+    using thread_id_t = std::uint32_t;
+    inline thread_id_t thread_id() noexcept { return static_cast<thread_id_t>( ::GetCurrentThreadId() ); }
+    using thread_hash = core::Hash<thread_id_t>;
+#elif defined( __unix__ ) || defined( __APPLE__ )
+    using thread_id_t = std::uintptr_t;
+    inline thread_id_t thread_id() noexcept {
+        const pthread_t NativeId = pthread_self();
+        static_assert( std::is_trivially_copyable<pthread_t>::value, "pthread_t must be trivially copyable" );
+        static_assert( sizeof( NativeId ) <= sizeof( thread_id_t ), "pthread_t is too large to use as a native thread ID" );
+
+        thread_id_t ThreadId{};
+        std::memcpy( &ThreadId, &NativeId, sizeof( NativeId ) );
+        return ThreadId;
+    }
+    using thread_hash = core::Hash<thread_id_t>;
+#else
     using thread_id_t = std::thread::id;
-    static const thread_id_t invalid_thread_id;
-    inline thread_id_t       thread_id() noexcept { return std::this_thread::get_id(); }
+    inline thread_id_t thread_id() noexcept { return std::this_thread::get_id(); }
     using thread_hash = std::hash<std::thread::id>;
+#endif
 }  // namespace details
 
 #ifdef HAKLE_USE_CONCEPT
@@ -77,6 +112,10 @@ struct _QueueTypelessBase {};
 
 // TODO: manager traits
 // NOTE: QueueBase is an internal non-virtual base class and must never be destroyed via a base-class pointer.
+#if defined( _MSC_VER )
+#pragma warning( push )
+#pragma warning( disable : 4324 )  // Intentional cache-line padding.
+#endif
 template <class T, std::size_t BLOCK_SIZE, class Allocator, HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE>
 HAKLE_REQUIRES( CheckBlockSize<BLOCK_SIZE, BLOCK_TYPE>&& CheckBlockManager<BLOCK_TYPE, BLOCK_MANAGER_TYPE> )
 struct _QueueBase : public _QueueTypelessBase {
@@ -132,10 +171,11 @@ public:
     HAKLE_NODISCARD constexpr std::size_t GetTail() const noexcept { return TailIndex.load( std::memory_order_relaxed ); }
 
 protected:
-    std::atomic<std::size_t>                     HeadIndex{};
-    std::atomic<std::size_t>                     TailIndex{};
+    alignas( HAKLE_CACHE_LINE_SIZE ) std::atomic<std::size_t> HeadIndex{};
     std::atomic<std::size_t>                     DequeueAttemptsCount{};
     std::atomic<std::size_t>                     DequeueFailedCount{};
+
+    alignas( HAKLE_CACHE_LINE_SIZE ) std::atomic<std::size_t> TailIndex{};
     CompressPair<BlockType*, ValueAllocatorType> ValueAllocatorPair{};
 
     HAKLE_CPP14_CONSTEXPR ValueAllocatorType& ValueAllocator() noexcept { return ValueAllocatorPair.Second(); }
@@ -144,6 +184,9 @@ protected:
     HAKLE_CPP14_CONSTEXPR BlockType*&           TailBlock() noexcept { return ValueAllocatorPair.First(); }
     HAKLE_NODISCARD constexpr const BlockType*& TailBlock() const noexcept { return ValueAllocatorPair.First(); }
 };
+#if defined( _MSC_VER )
+#pragma warning( pop )
+#endif
 
 // SPMC Queue
 template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE = HakleFlagsBlock<T, BLOCK_SIZE>, HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>>
@@ -205,6 +248,8 @@ public:
 
     FastQueue( const FastQueue& Other )            = delete;
     FastQueue& operator=( const FastQueue& Other ) = delete;
+
+    HAKLE_CPP14_CONSTEXPR void RebindBlockManager( BlockManagerType* InBlockManager ) noexcept { BlockManager = InBlockManager; }
 
     HAKLE_CPP14_CONSTEXPR void Clear() noexcept {
         if ( this->TailBlock() != nullptr ) {
@@ -361,6 +406,10 @@ public:
     template <AllocMode Mode, HAKLE_CONCEPT( std::input_iterator ) Iterator>
     HAKLE_REQUIRES( requires( Iterator Item ) { ValueType( *Item ); } )
     HAKLE_CPP20_CONSTEXPR bool EnqueueBulk( Iterator ItemFirst, std::size_t Count ) {
+        if ( Count == 0 ) {
+            return true;
+        }
+
         // set original state
         std::size_t OriginIndexEntriesUsed = PO_IndexEntriesUsed();
         std::size_t OriginNextIndexEntry   = PO_NextIndexEntry;
@@ -369,17 +418,29 @@ public:
         BlockType*  FirstAllocatedBlock    = nullptr;
 
         // roll back
-        auto RollBack = [ this, &OriginNextIndexEntry, &StartBlock ]() -> void {
+        auto RollBack = [ this, &OriginNextIndexEntry, StartBlock, &FirstAllocatedBlock ]() -> void {
+            if ( FirstAllocatedBlock != nullptr ) {
+                BlockType* LastAllocatedBlock = this->TailBlock();
+                BlockType* AllocatedBlock     = FirstAllocatedBlock;
+                while ( true ) {
+                    AllocatedBlock->SetAllEmpty();
+                    if ( AllocatedBlock == LastAllocatedBlock ) {
+                        break;
+                    }
+                    AllocatedBlock = AllocatedBlock->Next;
+                }
+            }
+
             PO_NextIndexEntry = OriginNextIndexEntry;
-            this->TailBlock() = StartBlock;
+            // Keep blocks allocated into an initially empty queue reachable as an
+            // empty ring, matching the single-item enqueue exception rollback.
+            if ( StartBlock != nullptr ) {
+                this->TailBlock() = StartBlock;
+            }
         };
 
         std::size_t LastTailIndex = StartTailIndex - 1;
-        // std::size_t BlockCountNeed =
-        //     ( ( ( Count + LastTailIndex ) & ~( BlockSize - 1 ) ) - ( ( LastTailIndex & ~( BlockSize - 1 ) ) ) ) >> BlockSizeLog2;
-
-        // StartTailIndex - 1 must be signed before shifting
-        std::size_t BlockCountNeed   = ( ( Count + StartTailIndex - 1 ) >> BlockSizeLog2 ) - ( static_cast<typename std::make_signed<std::size_t>::type>( StartTailIndex - 1 ) >> BlockSizeLog2 );
+        std::size_t BlockCountNeed   = ( ( ( Count + LastTailIndex ) & ~( BlockSize - 1 ) ) - ( LastTailIndex & ~( BlockSize - 1 ) ) ) >> BlockSizeLog2;
         std::size_t CurrentTailIndex = LastTailIndex & ~( BlockSize - 1 );
 
         if HAKLE_LIKELY ( BlockCountNeed > 0 ) {
@@ -468,18 +529,6 @@ public:
                     }
                 }
                 HAKLE_CATCH( ... ) {
-                    // we need to set all allocated blocks to empty
-                    if ( FirstAllocatedBlock != nullptr ) {
-                        BlockType* AllocatedBlock = FirstAllocatedBlock;
-                        while ( true ) {
-                            AllocatedBlock->SetAllEmpty();
-                            if ( AllocatedBlock == this->TailBlock() ) {
-                                break;
-                            }
-                            AllocatedBlock = AllocatedBlock->Next;
-                        }
-                    }
-
                     RollBack();
 
                     // destroy all values
@@ -812,9 +861,24 @@ public:
     SlowQueue( const SlowQueue& )            = delete;
     SlowQueue& operator=( const SlowQueue& ) = delete;
 
+    HAKLE_CPP14_CONSTEXPR void RebindBlockManager( BlockManagerType* InBlockManager ) noexcept { BlockManager() = InBlockManager; }
+
     HAKLE_CPP14_CONSTEXPR void Clear() noexcept {
         std::size_t Index = this->HeadIndex.load( std::memory_order_relaxed );
         std::size_t Tail  = this->TailIndex.load( std::memory_order_relaxed );
+
+        // A partially filled final block cannot reach CounterCheckPolicy's
+        // BlockSize empty count. Once all of its published elements have been
+        // dequeued, HeadIndex equals TailIndex and the loop below has nothing
+        // left to visit, so return that block explicitly during destruction.
+        if ( Index == Tail && ( Tail & ( BlockSize - 1 ) ) != 0 ) {
+            IndexEntry* TailEntry = GetBlockIndexEntryForIndex( Tail - 1 );
+            BlockType*  TailBlock = TailEntry->Value.load( std::memory_order_relaxed );
+            if ( TailBlock != nullptr ) {
+                TailEntry->Value.store( nullptr, std::memory_order_relaxed );
+                BlockManager()->ReturnBlock( TailBlock );
+            }
+        }
 
         // Release all block
         BlockType* Block = nullptr;
@@ -919,6 +983,10 @@ public:
     template <AllocMode Mode, HAKLE_CONCEPT( std::input_iterator ) Iterator>
     HAKLE_REQUIRES( requires( Iterator Item ) { ValueType( *Item ); } )
     HAKLE_CPP20_CONSTEXPR bool EnqueueBulk( Iterator ItemFirst, std::size_t Count ) {
+        if ( Count == 0 ) {
+            return true;
+        }
+
         std::size_t OriginTailIndex     = this->TailIndex.load( std::memory_order_relaxed );
         BlockType*  OriginTailBlock     = this->TailBlock();
         BlockType*  FirstAllocatedBlock = nullptr;
@@ -937,8 +1005,9 @@ public:
             this->TailBlock() = OriginTailBlock;
         };
 
-        std::size_t NeedCount        = ( ( OriginTailIndex + Count - 1 ) >> BlockSizeLog2 ) - ( static_cast<typename std::make_signed<std::size_t>::type>( OriginTailIndex - 1 ) >> BlockSizeLog2 );
-        std::size_t CurrentTailIndex = ( OriginTailIndex - 1 ) & ~( BlockSize - 1 );
+        std::size_t LastTailIndex    = OriginTailIndex - 1;
+        std::size_t NeedCount        = ( ( ( Count + LastTailIndex ) & ~( BlockSize - 1 ) ) - ( LastTailIndex & ~( BlockSize - 1 ) ) ) >> BlockSizeLog2;
+        std::size_t CurrentTailIndex = LastTailIndex & ~( BlockSize - 1 );
         // allocate index entry and block
         if ( NeedCount > 0 ) {
             while ( NeedCount > 0 ) {
@@ -1426,6 +1495,7 @@ public:
             HAKLE_FOR_EACH( HAKLE_OP_MOVE_ATOMIC, HAKLE_SEM, ProducerListsHead, ProducerCount, GlobalExplicitConsumerOffset(), NextExplicitConsumerId() );
             HAKLE_FOR_EACH( HAKLE_OP_MOVE, HAKLE_SEM, ImplicitMap, ExplicitProducerAllocatorPair, ImplicitProducerAllocatorPair, ValueAllocator(), ProducerListNodeAllocator() );
 
+            RefreshImplicitProducerCacheId();
             Other.Reset();
             ReclaimProducerLists();
         }
@@ -1442,6 +1512,10 @@ public:
         HAKLE_FOR_EACH( HAKLE_SWAP_ATOMIC, HAKLE_SEM, ProducerListsHead, ProducerCount, NextExplicitConsumerId(), GlobalExplicitConsumerOffset() );
         using std::swap;
         HAKLE_FOR_EACH( HAKLE_SWAP, HAKLE_SEM, ImplicitMap, ExplicitProducerAllocatorPair, ImplicitProducerAllocatorPair, ValueAllocator(), ProducerListNodeAllocator() );
+        RefreshImplicitProducerCacheId();
+        Other.RefreshImplicitProducerCacheId();
+        ReclaimProducerLists();
+        Other.ReclaimProducerLists();
     }
 #endif
 
@@ -1456,6 +1530,7 @@ public:
         ProducerCount.store( 0, std::memory_order_relaxed );
         GlobalExplicitConsumerOffset().store( 0, std::memory_order_relaxed );
         NextExplicitConsumerId().store( 0, std::memory_order_relaxed );
+        RefreshImplicitProducerCacheId();
     }
 
     HAKLE_CPP14_CONSTEXPR ProducerToken GetProducerToken() noexcept { return ProducerToken( *this ); }
@@ -1824,7 +1899,15 @@ private:
     }
 
     constexpr void ReclaimProducerLists() noexcept {
-        ForEachProducer( [ this ]( ProducerListNode* Node ) { Node->Parent = this; } );
+        ForEachProducer( [ this ]( ProducerListNode* Node ) {
+            Node->Parent = this;
+            if ( Node->Type == ProducerType::Explicit ) {
+                Node->GetExplicitProducer()->RebindBlockManager( &ExplicitManager() );
+            }
+            else {
+                Node->GetImplicitProducer()->RebindBlockManager( &ImplicitManager() );
+            }
+        } );
     }
 
     HAKLE_CPP14_CONSTEXPR ProducerListNode* AddProducer( ProducerListNode* Node ) {
@@ -1881,13 +1964,15 @@ private:
         ProducerListNodeAllocatorTraits::Deallocate( ProducerListNodeAllocator(), Node );
     }
 
-    constexpr void ForEachProducer( std::function<void( ProducerListNode* )> Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
+    template <class F>
+    constexpr void ForEachProducer( F&& Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
         for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_acquire ); Node != nullptr; Node = Node->Next ) {
             Func( Node );
         }
     }
 
-    HAKLE_CPP14_CONSTEXPR void ForEachProducerWithBreak( std::function<bool( ProducerListNode* )> Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
+    template <class F>
+    HAKLE_CPP14_CONSTEXPR void ForEachProducerWithBreak( F&& Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
         for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_acquire ); Node != nullptr; Node = Node->Next ) {
             if ( !Func( Node ) ) {
                 return;
@@ -1895,7 +1980,8 @@ private:
         }
     }
 
-    HAKLE_CPP14_CONSTEXPR bool ForEachProducerWithReturn( std::function<bool( ProducerListNode* )> Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
+    template <class F>
+    HAKLE_CPP14_CONSTEXPR bool ForEachProducerWithReturn( F&& Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
         for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_acquire ); Node != nullptr; Node = Node->Next ) {
             if ( Func( Node ) ) {
                 return true;
@@ -1904,7 +1990,8 @@ private:
         return false;
     }
 
-    constexpr void ForEachProducerSafe( std::function<void( ProducerListNode* )> Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
+    template <class F>
+    constexpr void ForEachProducerSafe( F&& Func ) HAKLE_NOEXCEPT( noexcept( Func( nullptr ) ) ) {
         for ( ProducerListNode* Node = ProducerListsHead.load( std::memory_order_relaxed ); Node != nullptr; ) {
             ProducerListNode* Next = Node->Next;
             Func( Node );
@@ -1947,19 +2034,50 @@ private:
         return true;
     }
 
+    struct ImplicitProducerCache {
+        const ConcurrentQueue* Queue{};
+        std::uint64_t          QueueId{};
+        ImplicitProducer*      Producer{};
+    };
+
+    static ImplicitProducerCache& LocalImplicitProducerCache() noexcept {
+        static thread_local ImplicitProducerCache Cache;
+        return Cache;
+    }
+
+    static std::uint64_t NextImplicitProducerCacheId() noexcept {
+        static std::atomic<std::uint64_t> NextId{ 1 };
+        return NextId.fetch_add( 1, std::memory_order_relaxed );
+    }
+
+    void RefreshImplicitProducerCacheId() noexcept { ImplicitProducerCacheId = NextImplicitProducerCacheId(); }
+
     ImplicitProducer* GetOrAddImplicitProducer() {
+        ImplicitProducerCache& Cache = LocalImplicitProducerCache();
+        if HAKLE_LIKELY ( Cache.Queue == this && Cache.QueueId == ImplicitProducerCacheId ) {
+            return Cache.Producer;
+        }
+
         details::thread_id_t thread_id = details::thread_id();
         ImplicitProducer*    producer  = nullptr;
-        HashTableStatus      Result    = ImplicitMap.GetOrAddByFunc( thread_id, producer, [ this, &producer ]() { return producer = GetProducerListNode( ProducerType::Implicit )->GetImplicitProducer(); } );
+        HashTableStatus      Result    = ImplicitMap.GetOrAddByFunc( thread_id, producer, [ this ]() {
+            ProducerListNode* Node = GetProducerListNode( ProducerType::Implicit );
+            return Node == nullptr ? nullptr : Node->GetImplicitProducer();
+        } );
         if ( Result == HashTableStatus::FAILED ) {
             return nullptr;
         }
+
+        Cache.Queue    = this;
+        Cache.QueueId  = ImplicitProducerCacheId;
+        Cache.Producer = producer;
         return producer;
     }
 
     std::atomic<ProducerListNode*>                                                            ProducerListsHead{};
     std::atomic<uint32_t>                                                                     ProducerCount{};
     HashTable<details::thread_id_t, ImplicitProducer*, InitialHashSize, details::thread_hash> ImplicitMap{};
+    std::uint64_t                                                                             ImplicitProducerCacheId{ NextImplicitProducerCacheId() };
 
     CompressPair<ExplicitBlockManagerType, ExplicitProducerAllocatorType>   ExplicitProducerAllocatorPair{};
     CompressPair<ImplicitBlockManagerType, ImplicitProducerAllocatorType>   ImplicitProducerAllocatorPair{};

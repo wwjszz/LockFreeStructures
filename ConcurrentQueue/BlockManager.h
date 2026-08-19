@@ -129,13 +129,13 @@ public:
 
     HAKLE_CPP14_CONSTEXPR void Add( Node* InNode ) noexcept {
         // Set AddFlag first
-        if ( InNode->FreeListRefs.fetch_add( AddFlag, std::memory_order_relaxed ) == 0 ) {
+        if ( InNode->FreeListRefs.fetch_add( AddFlag, std::memory_order_acq_rel ) == 0 ) {
             InnerAdd( InNode );
         }
     }
 
     HAKLE_CPP14_CONSTEXPR Node* TryGet() noexcept {
-        Node* CurrentHead = Head().load( std::memory_order_relaxed );
+        Node* CurrentHead = Head().load( std::memory_order_acquire );
         while ( CurrentHead != nullptr ) {
             Node*    PrevHead = CurrentHead;
             uint32_t Refs     = CurrentHead->FreeListRefs.load( std::memory_order_relaxed );
@@ -149,14 +149,14 @@ public:
 
             // try Taken
             Node* Next = CurrentHead->FreeListNext.load( std::memory_order_relaxed );
-            if ( Head().compare_exchange_strong( CurrentHead, Next, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
+            if ( Head().compare_exchange_strong( CurrentHead, Next, std::memory_order_acquire, std::memory_order_relaxed ) ) {
                 // taken success, decrease refcount twice, for our and list's ref
-                CurrentHead->FreeListRefs.fetch_add( -2, std::memory_order_relaxed );
+                CurrentHead->FreeListRefs.fetch_sub( 2, std::memory_order_release );
                 return CurrentHead;
             }
 
             // taken failed, decrease refcount
-            Refs = PrevHead->FreeListRefs.fetch_add( -1, std::memory_order_relaxed );
+            Refs = PrevHead->FreeListRefs.fetch_sub( 1, std::memory_order_acq_rel );
             if ( Refs == AddFlag + 1 ) {
                 // no one is using it, add it back
                 InnerAdd( PrevHead );
@@ -177,9 +177,9 @@ private:
             // first update next then refs
             InNode->FreeListNext.store( CurrentHead, std::memory_order_relaxed );
             InNode->FreeListRefs.store( 1, std::memory_order_release );
-            if ( !Head().compare_exchange_strong( CurrentHead, InNode, std::memory_order_relaxed, std::memory_order_relaxed ) ) {
+            if ( !Head().compare_exchange_strong( CurrentHead, InNode, std::memory_order_release, std::memory_order_relaxed ) ) {
                 // check if someone already using it
-                if ( InNode->FreeListRefs.fetch_add( AddFlag - 1, std::memory_order_release ) == 1 ) {
+                if ( InNode->FreeListRefs.fetch_add( AddFlag - 1, std::memory_order_acq_rel ) == 1 ) {
                     continue;
                 }
             }

@@ -6,9 +6,11 @@
 #include <cstdint>
 #include <memory>
 #include <new>
+#include <thread>
 #include <type_traits>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -413,6 +415,80 @@ void test_custom_allocator_move_assignment_is_balanced() {
         counters->destructions.load(std::memory_order_relaxed));
 }
 
+void test_concurrent_free_list_reclaims_every_node() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  using block_type = hakle::HakleCounterBlock<int, 32>;
+  using allocator_type = counting_allocator<block_type>;
+  constexpr std::size_t node_count = 32;
+  constexpr std::size_t thread_count = 8;
+  constexpr std::size_t iterations = 50000;
+
+  {
+    allocator_type allocator(counters);
+    hakle::FreeList<block_type, allocator_type> list(allocator);
+    for (std::size_t index = 0; index != node_count; ++index) {
+      block_type *block = allocator.Allocate();
+      allocator.Construct(block);
+      list.Add(block);
+    }
+
+    std::vector<std::thread> threads;
+    threads.reserve(thread_count);
+    for (std::size_t thread = 0; thread != thread_count; ++thread) {
+      threads.emplace_back([&] {
+        for (std::size_t iteration = 0; iteration != iterations; ++iteration) {
+          block_type *block = nullptr;
+          while ((block = list.TryGet()) == nullptr) {
+            std::this_thread::yield();
+          }
+          list.Add(block);
+        }
+      });
+    }
+    for (auto &thread : threads) {
+      thread.join();
+    }
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+}
+
+void test_empty_slow_queue_reclaims_partial_dynamic_tail_block() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  {
+    using value_allocator_type = counting_allocator<int>;
+    using block_type = hakle::HakleCounterBlock<int, 32>;
+    using block_allocator_type = counting_allocator<block_type>;
+    using block_manager_type = hakle::HakleBlockManager<block_type, block_allocator_type>;
+    using slow_queue_type =
+        hakle::SlowQueue<int, 32, value_allocator_type, block_type, block_manager_type>;
+
+    value_allocator_type value_allocator(counters);
+    block_allocator_type block_allocator(value_allocator);
+    block_manager_type manager(0, block_allocator);
+
+    {
+      slow_queue_type queue(2, &manager, value_allocator);
+      CHECK(queue.Enqueue<hakle::AllocMode::CanAlloc>(7));
+
+      int value = 0;
+      CHECK(queue.Dequeue(value));
+      CHECK(value == 7);
+      CHECK(queue.Size() == 0);
+    }
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+}
+
 } // namespace
 
 int main() {
@@ -426,5 +502,9 @@ int main() {
              test_piecewise_block_manager_sizes_with_custom_allocator);
   runner.run("custom allocator move assignment balance",
              test_custom_allocator_move_assignment_is_balanced);
+  runner.run("concurrent free-list reclamation",
+             test_concurrent_free_list_reclaims_every_node);
+  runner.run("empty slow queue reclaims a partial dynamic tail block",
+             test_empty_slow_queue_reclaims_partial_dynamic_tail_block);
   return runner.finish("allocator and lifetime");
 }
