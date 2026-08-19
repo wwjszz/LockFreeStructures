@@ -1,11 +1,14 @@
 #include "ConcurrentQueue/ConcurrentQueue.h"
 #include "test_support.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <latch>
 #include <memory>
 #include <new>
+#include <stdexcept>
 #include <thread>
 #include <type_traits>
 #include <tuple>
@@ -20,6 +23,8 @@ struct allocation_counters {
   std::atomic<std::int64_t> live_slots{0};
   std::atomic<std::size_t> constructions{0};
   std::atomic<std::size_t> destructions{0};
+  std::atomic<int> successful_allocations_before_failure{-1};
+  std::atomic<int> successful_constructions_before_failure{-1};
 
   void reset() noexcept {
     allocation_calls.store(0, std::memory_order_relaxed);
@@ -27,8 +32,25 @@ struct allocation_counters {
     live_slots.store(0, std::memory_order_relaxed);
     constructions.store(0, std::memory_order_relaxed);
     destructions.store(0, std::memory_order_relaxed);
+    successful_allocations_before_failure.store(-1, std::memory_order_relaxed);
+    successful_constructions_before_failure.store(-1, std::memory_order_relaxed);
   }
 };
+
+bool consume_failure_countdown(std::atomic<int> &countdown) noexcept {
+  int current = countdown.load(std::memory_order_relaxed);
+  while (current >= 0) {
+    if (current == 0) {
+      if (countdown.compare_exchange_weak(current, -1, std::memory_order_relaxed)) {
+        return true;
+      }
+    } else if (countdown.compare_exchange_weak(current, current - 1,
+                                                std::memory_order_relaxed)) {
+      return false;
+    }
+  }
+  return false;
+}
 
 std::shared_ptr<allocation_counters> shared_allocation_counters() {
   static auto counters = std::make_shared<allocation_counters>();
@@ -77,6 +99,9 @@ public:
   [[nodiscard]] Pointer Allocate() { return Allocate(1); }
 
   [[nodiscard]] Pointer Allocate(SizeType count) {
+    if (consume_failure_countdown(counters_->successful_allocations_before_failure)) {
+      throw std::bad_alloc();
+    }
     auto *memory = static_cast<Pointer>(::operator new(sizeof(T) * count));
     counters_->allocation_calls.fetch_add(1, std::memory_order_relaxed);
     counters_->live_slots.fetch_add(static_cast<std::int64_t>(count),
@@ -97,6 +122,9 @@ public:
   }
 
   template <typename... Arguments> void Construct(Pointer pointer, Arguments &&...arguments) {
+    if (consume_failure_countdown(counters_->successful_constructions_before_failure)) {
+      throw std::runtime_error("injected allocator construction failure");
+    }
     std::construct_at(pointer, std::forward<Arguments>(arguments)...);
     counters_->constructions.fetch_add(1, std::memory_order_relaxed);
   }
@@ -164,6 +192,43 @@ template <typename T, typename Allocator> struct counting_queue_traits {
   static ImplicitBlockManagerType
   MakeDefaultImplicitBlockManager(const ImplicitAllocatorType &allocator) {
     return ImplicitBlockManagerType(InitialBlockPoolSize, allocator);
+  }
+};
+
+template <typename T, typename Allocator>
+struct slab_counting_queue_traits : counting_queue_traits<T, Allocator> {
+  using Base = counting_queue_traits<T, Allocator>;
+  using typename Base::ExplicitAllocatorType;
+  using typename Base::ExplicitBlockType;
+  using typename Base::ImplicitAllocatorType;
+  using typename Base::ImplicitBlockType;
+
+  static constexpr std::size_t SlabBlockCount = 8;
+  using ExplicitBlockManagerType =
+      hakle::SlabBlockManager<ExplicitBlockType, ExplicitAllocatorType, SlabBlockCount>;
+  using ImplicitBlockManagerType =
+      hakle::SlabBlockManager<ImplicitBlockType, ImplicitAllocatorType, SlabBlockCount>;
+
+  static ExplicitBlockManagerType
+  MakeDefaultExplicitBlockManager(const ExplicitAllocatorType &allocator) {
+    return ExplicitBlockManagerType(0, allocator);
+  }
+
+  static ImplicitBlockManagerType
+  MakeDefaultImplicitBlockManager(const ImplicitAllocatorType &allocator) {
+    return ImplicitBlockManagerType(0, allocator);
+  }
+
+  static ExplicitBlockManagerType
+  MakeExplicitBlockManager(const ExplicitAllocatorType &allocator,
+                           std::size_t block_pool_size) {
+    return ExplicitBlockManagerType(block_pool_size, allocator);
+  }
+
+  static ImplicitBlockManagerType
+  MakeImplicitBlockManager(const ImplicitAllocatorType &allocator,
+                           std::size_t block_pool_size) {
+    return ImplicitBlockManagerType(block_pool_size, allocator);
   }
 };
 
@@ -489,6 +554,420 @@ void test_empty_slow_queue_reclaims_partial_dynamic_tail_block() {
         counters->deallocation_calls.load(std::memory_order_relaxed));
 }
 
+void test_slab_block_manager_allocates_and_reuses_slabs() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  using block_type = hakle::HakleCounterBlock<int, 32>;
+  using allocator_type = counting_allocator<block_type>;
+  using manager_type = hakle::SlabBlockManager<block_type, allocator_type, 8>;
+
+  {
+    allocator_type allocator(counters);
+    manager_type manager(0, allocator);
+    std::vector<block_type *> blocks;
+    blocks.reserve(17);
+
+    for (std::size_t index = 0; index != 17; ++index) {
+      block_type *block = manager.RequisitionBlock(hakle::AllocMode::CanAlloc);
+      CHECK(block != nullptr);
+      blocks.push_back(block);
+    }
+    CHECK(manager.GetDynamicSlabCount() == 3);
+    CHECK(manager.GetReservedDynamicBlockCount() == 24);
+    // Each slab performs one block-array allocation and one metadata allocation.
+    CHECK(counters->allocation_calls.load(std::memory_order_relaxed) == 7);
+
+    for (block_type *block : blocks) {
+      manager.ReturnBlock(block);
+    }
+    blocks.clear();
+
+    for (std::size_t index = 0; index != 17; ++index) {
+      block_type *block = manager.RequisitionBlock(hakle::AllocMode::CannotAlloc);
+      CHECK(block != nullptr);
+      blocks.push_back(block);
+    }
+    CHECK(manager.GetDynamicSlabCount() == 3);
+    CHECK(counters->allocation_calls.load(std::memory_order_relaxed) == 7);
+
+    for (block_type *block : blocks) {
+      manager.ReturnBlock(block);
+    }
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+  CHECK(counters->constructions.load(std::memory_order_relaxed) ==
+        counters->destructions.load(std::memory_order_relaxed));
+}
+
+void test_slab_block_manager_move_preserves_owned_storage() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  using block_type = hakle::HakleCounterBlock<int, 32>;
+  using allocator_type = counting_allocator<block_type>;
+  using manager_type = hakle::SlabBlockManager<block_type, allocator_type, 8>;
+
+  {
+    allocator_type allocator(counters);
+    manager_type source(0, allocator);
+    std::vector<block_type *> blocks;
+    for (std::size_t index = 0; index != 9; ++index) {
+      blocks.push_back(source.RequisitionBlock(hakle::AllocMode::CanAlloc));
+    }
+    for (block_type *block : blocks) {
+      source.ReturnBlock(block);
+    }
+
+    manager_type moved(std::move(source));
+    CHECK(moved.GetDynamicSlabCount() == 2);
+    CHECK(source.GetDynamicSlabCount() == 0);
+
+    manager_type assigned(0, allocator);
+    assigned = std::move(moved);
+    CHECK(assigned.GetDynamicSlabCount() == 2);
+    CHECK(moved.GetDynamicSlabCount() == 0);
+
+    blocks.clear();
+    for (std::size_t index = 0; index != 9; ++index) {
+      block_type *block =
+          assigned.RequisitionBlock(hakle::AllocMode::CannotAlloc);
+      CHECK(block != nullptr);
+      blocks.push_back(block);
+    }
+    for (block_type *block : blocks) {
+      assigned.ReturnBlock(block);
+    }
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+  CHECK(counters->constructions.load(std::memory_order_relaxed) ==
+        counters->destructions.load(std::memory_order_relaxed));
+}
+
+void test_arena_block_manager_reserves_and_constructs_lazily() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  using block_type = hakle::HakleCounterBlock<int, 32>;
+  using allocator_type = counting_allocator<block_type>;
+  using manager_type =
+      hakle::ArenaBlockManager<block_type, allocator_type, 8,
+                               sizeof(block_type) * 32, 4, 4>;
+
+  {
+    allocator_type allocator(counters);
+    manager_type manager(0, allocator);
+    std::vector<block_type *> blocks;
+    blocks.reserve(33);
+
+    for (std::size_t index = 0; index != 33; ++index) {
+      block_type *block = manager.RequisitionBlock(hakle::AllocMode::CanAlloc);
+      CHECK(block != nullptr);
+      blocks.push_back(block);
+    }
+
+    CHECK(manager.GetDynamicSlabCount() == 5);
+    CHECK(manager.GetDynamicArenaCount() == 2);
+    CHECK(manager.GetReservedDynamicBlockCount() == 64);
+    CHECK(manager.GetConstructedDynamicBlockCount() == 40);
+    // One shard-array allocation plus one header and block-array allocation
+    // for each of the two arenas.
+    CHECK(counters->allocation_calls.load(std::memory_order_relaxed) == 5);
+
+    for (block_type *block : blocks) {
+      manager.ReturnBlock(block);
+    }
+    blocks.clear();
+
+    for (std::size_t index = 0; index != 33; ++index) {
+      block_type *block =
+          manager.RequisitionBlock(hakle::AllocMode::CannotAlloc);
+      CHECK(block != nullptr);
+      blocks.push_back(block);
+    }
+    CHECK(counters->allocation_calls.load(std::memory_order_relaxed) == 5);
+
+    for (block_type *block : blocks) {
+      manager.ReturnBlock(block);
+    }
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+  CHECK(counters->constructions.load(std::memory_order_relaxed) ==
+        counters->destructions.load(std::memory_order_relaxed));
+}
+
+void test_arena_block_manager_recovers_from_lazy_construction_failure() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  using block_type = hakle::HakleCounterBlock<int, 32>;
+  using allocator_type = counting_allocator<block_type>;
+  using manager_type =
+      hakle::ArenaBlockManager<block_type, allocator_type, 8,
+                               sizeof(block_type) * 32, 4, 4>;
+
+  {
+    allocator_type allocator(counters);
+    manager_type manager(0, allocator);
+    std::vector<block_type *> blocks;
+    for (std::size_t index = 0; index != 8; ++index) {
+      blocks.push_back(manager.RequisitionBlock(hakle::AllocMode::CanAlloc));
+    }
+
+    CHECK(manager.GetDynamicArenaCount() == 1);
+    CHECK(manager.GetConstructedDynamicBlockCount() == 8);
+    counters->successful_constructions_before_failure.store(
+        0, std::memory_order_relaxed);
+
+    bool threw = false;
+    try {
+      static_cast<void>(manager.RequisitionBlock(hakle::AllocMode::CanAlloc));
+    } catch (const std::runtime_error &) {
+      threw = true;
+    }
+    CHECK(threw);
+    CHECK(manager.GetDynamicArenaCount() == 1);
+    CHECK(manager.GetDynamicSlabCount() == 1);
+    CHECK(manager.GetConstructedDynamicBlockCount() == 8);
+
+    block_type *recovered =
+        manager.RequisitionBlock(hakle::AllocMode::CanAlloc);
+    CHECK(recovered != nullptr);
+    blocks.push_back(recovered);
+    CHECK(manager.GetDynamicSlabCount() == 2);
+    CHECK(manager.GetConstructedDynamicBlockCount() == 16);
+
+    for (block_type *block : blocks) {
+      manager.ReturnBlock(block);
+    }
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+  CHECK(counters->constructions.load(std::memory_order_relaxed) ==
+        counters->destructions.load(std::memory_order_relaxed));
+}
+
+void test_slab_block_manager_shards_concurrent_allocations_and_recycling() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  using block_type = hakle::HakleCounterBlock<int, 32>;
+  using allocator_type = counting_allocator<block_type>;
+  using manager_type = hakle::SlabBlockManager<block_type, allocator_type, 8, 32>;
+  constexpr std::size_t thread_count = 8;
+  constexpr std::size_t blocks_per_thread = 24;
+
+  {
+    allocator_type allocator(counters);
+    manager_type manager(0, allocator);
+    std::vector<std::vector<block_type *>> acquired(thread_count);
+    std::latch ready_gate(thread_count);
+    std::latch start_gate(1);
+    std::vector<std::thread> threads;
+    threads.reserve(thread_count);
+
+    for (std::size_t thread_index = 0; thread_index != thread_count;
+         ++thread_index) {
+      threads.emplace_back([&, thread_index] {
+        auto &local = acquired[thread_index];
+        local.reserve(blocks_per_thread);
+        ready_gate.count_down();
+        start_gate.wait();
+        for (std::size_t index = 0; index != blocks_per_thread; ++index) {
+          block_type *block =
+              manager.RequisitionBlock(hakle::AllocMode::CanAlloc);
+          CHECK(block != nullptr);
+          local.push_back(block);
+        }
+      });
+    }
+
+    ready_gate.wait();
+    start_gate.count_down();
+    for (auto &thread : threads) {
+      thread.join();
+    }
+
+    CHECK(manager.GetDynamicSlabCount() == thread_count * 3);
+    CHECK(manager.GetReservedDynamicBlockCount() == thread_count * 24);
+    const auto allocations_before_reuse =
+        counters->allocation_calls.load(std::memory_order_relaxed);
+
+    // Return from all threads at once. Address-based routing spreads these
+    // nodes over the recycled free lists without a shared dispatcher.
+    threads.clear();
+    for (std::size_t thread_index = 0; thread_index != thread_count;
+         ++thread_index) {
+      threads.emplace_back([&, thread_index] {
+        for (block_type *block : acquired[thread_index]) {
+          manager.ReturnBlock(block);
+        }
+      });
+    }
+    for (auto &thread : threads) {
+      thread.join();
+    }
+
+    // New threads get different home shards. CannotAlloc therefore exercises
+    // both local recycled lists and cross-shard probing.
+    std::vector<std::vector<block_type *>> reacquired(thread_count);
+    threads.clear();
+    for (std::size_t thread_index = 0; thread_index != thread_count;
+         ++thread_index) {
+      threads.emplace_back([&, thread_index] {
+        auto &local = reacquired[thread_index];
+        local.reserve(blocks_per_thread);
+        for (std::size_t index = 0; index != blocks_per_thread; ++index) {
+          block_type *block =
+              manager.RequisitionBlock(hakle::AllocMode::CannotAlloc);
+          CHECK(block != nullptr);
+          local.push_back(block);
+        }
+      });
+    }
+    for (auto &thread : threads) {
+      thread.join();
+    }
+
+    CHECK(manager.GetDynamicSlabCount() == thread_count * 3);
+    CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+          allocations_before_reuse);
+
+    std::vector<block_type *> original_blocks;
+    std::vector<block_type *> recycled_blocks;
+    original_blocks.reserve(thread_count * blocks_per_thread);
+    recycled_blocks.reserve(thread_count * blocks_per_thread);
+    for (std::size_t thread_index = 0; thread_index != thread_count;
+         ++thread_index) {
+      original_blocks.insert(original_blocks.end(), acquired[thread_index].begin(),
+                             acquired[thread_index].end());
+      recycled_blocks.insert(recycled_blocks.end(), reacquired[thread_index].begin(),
+                             reacquired[thread_index].end());
+    }
+    std::sort(original_blocks.begin(), original_blocks.end());
+    std::sort(recycled_blocks.begin(), recycled_blocks.end());
+    CHECK(recycled_blocks == original_blocks);
+
+    for (const auto &local : reacquired) {
+      for (block_type *block : local) {
+        manager.ReturnBlock(block);
+      }
+    }
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+  CHECK(counters->constructions.load(std::memory_order_relaxed) ==
+        counters->destructions.load(std::memory_order_relaxed));
+}
+
+void test_slab_block_manager_cleans_up_failed_slab_creation() {
+  const auto counters = shared_allocation_counters();
+  using block_type = hakle::HakleCounterBlock<int, 32>;
+  using allocator_type = counting_allocator<block_type>;
+  using manager_type = hakle::SlabBlockManager<block_type, allocator_type, 8, 4>;
+
+  counters->reset();
+  {
+    allocator_type allocator(counters);
+    manager_type manager(0, allocator);
+    // Header allocation succeeds; the following Block array allocation fails.
+    counters->successful_allocations_before_failure.store(1,
+                                                           std::memory_order_relaxed);
+    bool threw = false;
+    try {
+      static_cast<void>(manager.RequisitionBlock(hakle::AllocMode::CanAlloc));
+    } catch (const std::bad_alloc &) {
+      threw = true;
+    }
+    CHECK(threw);
+    CHECK(manager.GetDynamicSlabCount() == 0);
+    CHECK(manager.GetReservedDynamicBlockCount() == 0);
+
+    block_type *block = manager.RequisitionBlock(hakle::AllocMode::CanAlloc);
+    CHECK(block != nullptr);
+    manager.ReturnBlock(block);
+  }
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+  CHECK(counters->constructions.load(std::memory_order_relaxed) ==
+        counters->destructions.load(std::memory_order_relaxed));
+
+  counters->reset();
+  {
+    allocator_type allocator(counters);
+    manager_type manager(0, allocator);
+    // Header construction succeeds; the first Block construction fails.
+    counters->successful_constructions_before_failure.store(
+        1, std::memory_order_relaxed);
+    bool threw = false;
+    try {
+      static_cast<void>(manager.RequisitionBlock(hakle::AllocMode::CanAlloc));
+    } catch (const std::runtime_error &) {
+      threw = true;
+    }
+    CHECK(threw);
+    CHECK(manager.GetDynamicSlabCount() == 0);
+    CHECK(manager.GetReservedDynamicBlockCount() == 0);
+
+    block_type *block = manager.RequisitionBlock(hakle::AllocMode::CanAlloc);
+    CHECK(block != nullptr);
+    manager.ReturnBlock(block);
+  }
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+  CHECK(counters->constructions.load(std::memory_order_relaxed) ==
+        counters->destructions.load(std::memory_order_relaxed));
+}
+
+void test_queue_with_slab_block_managers_is_balanced() {
+  const auto counters = shared_allocation_counters();
+  counters->reset();
+
+  {
+    using allocator_type = counting_allocator<int>;
+    using traits_type = slab_counting_queue_traits<int, allocator_type>;
+    using queue_type = hakle::ConcurrentQueue<int, allocator_type, traits_type>;
+
+    allocator_type allocator(counters);
+    queue_type queue(allocator);
+    constexpr int value_count = 32 * 20;
+
+    for (int value = 0; value != value_count; ++value) {
+      CHECK(queue.Enqueue(value));
+    }
+
+    std::int64_t sum = 0;
+    for (int index = 0; index != value_count; ++index) {
+      int value = 0;
+      CHECK(queue.TryDequeue(value));
+      sum += value;
+    }
+    CHECK(sum == static_cast<std::int64_t>(value_count - 1) * value_count / 2);
+    CHECK(queue.Size() == 0);
+  }
+
+  CHECK(counters->live_slots.load(std::memory_order_relaxed) == 0);
+  CHECK(counters->allocation_calls.load(std::memory_order_relaxed) ==
+        counters->deallocation_calls.load(std::memory_order_relaxed));
+  CHECK(counters->constructions.load(std::memory_order_relaxed) ==
+        counters->destructions.load(std::memory_order_relaxed));
+}
+
 } // namespace
 
 int main() {
@@ -506,5 +985,19 @@ int main() {
              test_concurrent_free_list_reclaims_every_node);
   runner.run("empty slow queue reclaims a partial dynamic tail block",
              test_empty_slow_queue_reclaims_partial_dynamic_tail_block);
+  runner.run("slab block manager allocation and reuse",
+             test_slab_block_manager_allocates_and_reuses_slabs);
+  runner.run("slab block manager move ownership",
+             test_slab_block_manager_move_preserves_owned_storage);
+  runner.run("arena block manager lazy construction",
+             test_arena_block_manager_reserves_and_constructs_lazily);
+  runner.run("arena block manager lazy construction failure",
+             test_arena_block_manager_recovers_from_lazy_construction_failure);
+  runner.run("slab block manager concurrent allocation and recycling",
+             test_slab_block_manager_shards_concurrent_allocations_and_recycling);
+  runner.run("slab block manager exception cleanup",
+             test_slab_block_manager_cleans_up_failed_slab_creation);
+  runner.run("queue with slab block managers",
+             test_queue_with_slab_block_managers_is_balanced);
   return runner.finish("allocator and lifetime");
 }

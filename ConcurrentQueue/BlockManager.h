@@ -8,7 +8,10 @@
 #include <atomic>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
+#include <mutex>
 #include <type_traits>
+#include <utility>
 
 #include "Block.h"
 #include "common/CompressPair.h"
@@ -67,7 +70,8 @@ concept CheckBlockManager = IsBlock<BLOCK_TYPE> && std::same_as<BLOCK_TYPE, type
 enum class AllocMode { CanAlloc, CannotAlloc };
 
 struct MemoryBase {
-    bool HasOwner{ false };
+    bool         HasOwner{ false };
+    std::uint8_t RecycleShard{ 0 };
 };
 
 template <class T>
@@ -489,6 +493,401 @@ private:
     FreeList<BlockType, AllocatorType>  List;
 };
 
+// Constructs dynamic blocks in contiguous slabs and keeps ownership in the
+// manager. By default each slab has its own allocation; ArenaBlockManager uses
+// the same implementation with a larger raw backing allocation and constructs
+// only one slab at a time. Both fresh and recycled blocks are sharded.
+template <class BLOCK_TYPE, std::size_t SLAB_BLOCK_COUNT, std::size_t ARENA_BYTES>
+inline constexpr std::size_t ArenaBlockCountFor =
+    ( ARENA_BYTES / sizeof( BLOCK_TYPE ) / SLAB_BLOCK_COUNT == 0 ? 1 : ARENA_BYTES / sizeof( BLOCK_TYPE ) / SLAB_BLOCK_COUNT ) * SLAB_BLOCK_COUNT;
+
+template <HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>, std::size_t SLAB_BLOCK_COUNT = 32,
+          std::size_t SHARD_COUNT = 32, std::size_t RECYCLE_SHARD_COUNT = ( SHARD_COUNT < 8 ? SHARD_COUNT : 8 ),
+          std::size_t ARENA_BLOCK_COUNT = SLAB_BLOCK_COUNT>
+class SlabBlockManager : public BlockManagerBase<BLOCK_TYPE, ALLOCATOR_TYPE> {
+public:
+    static_assert( SLAB_BLOCK_COUNT > 0, "SLAB_BLOCK_COUNT must be greater than zero" );
+    static_assert( SHARD_COUNT > 0, "SHARD_COUNT must be greater than zero" );
+    static_assert( RECYCLE_SHARD_COUNT > 0, "RECYCLE_SHARD_COUNT must be greater than zero" );
+    static_assert( RECYCLE_SHARD_COUNT <= SHARD_COUNT, "RECYCLE_SHARD_COUNT must not exceed SHARD_COUNT" );
+    static_assert( RECYCLE_SHARD_COUNT <= 256, "RECYCLE_SHARD_COUNT must fit in the per-block recycle shard tag" );
+    static_assert( ARENA_BLOCK_COUNT >= SLAB_BLOCK_COUNT, "ARENA_BLOCK_COUNT must contain at least one slab" );
+    static_assert( ARENA_BLOCK_COUNT % SLAB_BLOCK_COUNT == 0, "ARENA_BLOCK_COUNT must be a multiple of SLAB_BLOCK_COUNT" );
+
+    using BaseManager = BlockManagerBase<BLOCK_TYPE, ALLOCATOR_TYPE>;
+    using AllocatorType = typename BaseManager::AllocatorType;
+
+    using typename BaseManager::BlockAllocatorTraits;
+    using typename BaseManager::BlockType;
+    using typename BaseManager::ValueType;
+
+    using AllocMode = typename BaseManager::AllocMode;
+    constexpr static std::size_t SlabBlockCount = SLAB_BLOCK_COUNT;
+    constexpr static std::size_t ShardCount = SHARD_COUNT;
+    constexpr static std::size_t RecycleShardCount = RECYCLE_SHARD_COUNT;
+    constexpr static std::size_t ArenaBlockCount = ARENA_BLOCK_COUNT;
+
+private:
+    struct SlabHeader {
+        BlockType*  Blocks{ nullptr };
+        std::size_t Capacity{ 0 };
+        std::size_t ConstructedCount{ 0 };
+        SlabHeader* Next{ nullptr };
+    };
+
+    struct SlabShard {
+        explicit SlabShard( const AllocatorType& InAllocator ) : RecycledBlocks( InAllocator ) {}
+
+        SlabHeader*             Slabs{ nullptr };
+        std::size_t             DynamicSlabCount{ 0 };
+        std::size_t             DynamicArenaCount{ 0 };
+        std::size_t             ReservedDynamicBlockCount{ 0 };
+        std::size_t             ConstructedDynamicBlockCount{ 0 };
+        std::atomic<BlockType*> FreshBlocks{ nullptr };
+        FreeList<BlockType, AllocatorType> RecycledBlocks;
+        std::mutex              SlowPathMutex;
+    };
+
+    using SlabHeaderAllocatorType = typename HakeAllocatorTraits<AllocatorType>::template RebindAlloc<SlabHeader>;
+    using SlabHeaderAllocatorTraits = HakeAllocatorTraits<SlabHeaderAllocatorType>;
+    using SlabShardAllocatorType = typename HakeAllocatorTraits<AllocatorType>::template RebindAlloc<SlabShard>;
+    using SlabShardAllocatorTraits = HakeAllocatorTraits<SlabShardAllocatorType>;
+
+public:
+    explicit SlabBlockManager( std::size_t InSize, const AllocatorType& InAllocator = AllocatorType{} )
+        : BaseManager( InAllocator ), Pool( InSize, InAllocator ), SlabAllocator( InAllocator ), ShardAllocator( InAllocator ) {
+        AllocateShards();
+    }
+
+    ~SlabBlockManager() {
+        // Recycled nodes point into both Pool and Slabs. Detach every shard's
+        // list before either owner releases its backing storage.
+        ClearOwnedStorage();
+        DestroyShards();
+    }
+
+    SlabBlockManager( SlabBlockManager&& Other ) noexcept
+        : BaseManager( std::move( Other ) ), Pool( std::move( Other.Pool ) ), SlabAllocator( std::move( Other.SlabAllocator ) ),
+          ShardAllocator( std::move( Other.ShardAllocator ) ), Shards( std::exchange( Other.Shards, nullptr ) ) {
+        NextShard.store( Other.NextShard.exchange( 0, std::memory_order_relaxed ), std::memory_order_relaxed );
+    }
+
+    SlabBlockManager& operator=( SlabBlockManager&& Other ) noexcept {
+        if ( this != &Other ) {
+            // Like ConcurrentQueue move operations, manager moves require
+            // quiescence. The out-of-line shard storage is transferred without
+            // moving any mutex object.
+            ClearOwnedStorage();
+            DestroyShards();
+
+            Pool = std::move( Other.Pool );
+            BaseManager::operator=( std::move( Other ) );
+            SlabAllocator = std::move( Other.SlabAllocator );
+            ShardAllocator = std::move( Other.ShardAllocator );
+            Shards = std::exchange( Other.Shards, nullptr );
+            NextShard.store( Other.NextShard.exchange( 0, std::memory_order_relaxed ), std::memory_order_relaxed );
+        }
+        return *this;
+    }
+
+    SlabBlockManager( const SlabBlockManager& Other ) = delete;
+    SlabBlockManager& operator=( const SlabBlockManager& Other ) = delete;
+
+    HAKLE_NODISCARD std::size_t GetBlockPoolSize() const noexcept { return Pool.GetSize(); }
+    HAKLE_NODISCARD std::size_t GetDynamicSlabCount() const noexcept {
+        if ( Shards == nullptr ) {
+            return 0;
+        }
+        std::size_t Count = 0;
+        for ( std::size_t Index = 0; Index < ShardCount; ++Index ) {
+            Count += Shards[ Index ].DynamicSlabCount;
+        }
+        return Count;
+    }
+    HAKLE_NODISCARD std::size_t GetDynamicArenaCount() const noexcept {
+        if ( Shards == nullptr ) {
+            return 0;
+        }
+        std::size_t Count = 0;
+        for ( std::size_t Index = 0; Index < ShardCount; ++Index ) {
+            Count += Shards[ Index ].DynamicArenaCount;
+        }
+        return Count;
+    }
+    HAKLE_NODISCARD std::size_t GetReservedDynamicBlockCount() const noexcept {
+        if ( Shards == nullptr ) {
+            return 0;
+        }
+        std::size_t Count = 0;
+        for ( std::size_t Index = 0; Index < ShardCount; ++Index ) {
+            Count += Shards[ Index ].ReservedDynamicBlockCount;
+        }
+        return Count;
+    }
+    HAKLE_NODISCARD std::size_t GetConstructedDynamicBlockCount() const noexcept {
+        if ( Shards == nullptr ) {
+            return 0;
+        }
+        std::size_t Count = 0;
+        for ( std::size_t Index = 0; Index < ShardCount; ++Index ) {
+            Count += Shards[ Index ].ConstructedDynamicBlockCount;
+        }
+        return Count;
+    }
+
+    BlockType* RequisitionBlock( AllocMode Mode ) override {
+        if ( BlockType* Block = Pool.GetBlock(); Block != nullptr ) {
+            // Pool blocks have no producer affinity yet. Distribute their first
+            // return without making the initial-pool fast path touch TLS.
+            return SetRecycleShard( Block, GetInitialRecycleShardIndex( Block ) );
+        }
+
+        const std::size_t ShardIndex = GetThreadShardIndex();
+        const std::size_t RecycleShardIndex = ShardIndex % RecycleShardCount;
+        SlabShard& Shard = Shards[ ShardIndex ];
+        if ( BlockType* Block = Shards[ RecycleShardIndex ].RecycledBlocks.TryGet(); Block != nullptr ) {
+            return SetRecycleShard( Block, RecycleShardIndex );
+        }
+
+        if ( BlockType* Block = TryGetFreshBlock( Shard ); Block != nullptr ) {
+            return SetRecycleShard( Block, RecycleShardIndex );
+        }
+
+        if ( BlockType* Block = TryGetRecycledBlockFromOtherShard( RecycleShardIndex ); Block != nullptr ) {
+            return SetRecycleShard( Block, RecycleShardIndex );
+        }
+
+        if ( Mode == AllocMode::CannotAlloc ) {
+            // CannotAlloc must still expose already-reserved blocks even when
+            // the caller differs from the producer that reserved the slab.
+            for ( std::size_t Offset = 1; Offset < ShardCount; ++Offset ) {
+                if ( BlockType* Block = TryGetFreshBlock( Shards[ ( ShardIndex + Offset ) % ShardCount ] ); Block != nullptr ) {
+                    return SetRecycleShard( Block, RecycleShardIndex );
+                }
+            }
+            return nullptr;
+        }
+
+        std::lock_guard<std::mutex> Lock( Shard.SlowPathMutex );
+
+        // Another thread may have returned a block while this thread was
+        // waiting for the slab lock.
+        if ( BlockType* Block = Shards[ RecycleShardIndex ].RecycledBlocks.TryGet(); Block != nullptr ) {
+            return SetRecycleShard( Block, RecycleShardIndex );
+        }
+
+        if ( BlockType* Block = TryGetFreshBlock( Shard ); Block != nullptr ) {
+            return SetRecycleShard( Block, RecycleShardIndex );
+        }
+
+        if ( BlockType* Block = TryGetRecycledBlockFromOtherShard( RecycleShardIndex ); Block != nullptr ) {
+            return SetRecycleShard( Block, RecycleShardIndex );
+        }
+
+        return SetRecycleShard( AllocateSlab( Shard ), RecycleShardIndex );
+    }
+
+    void ReturnBlock( BlockType* InBlock ) override { Shards[ InBlock->RecycleShard ].RecycledBlocks.Add( InBlock ); }
+
+    void ReturnBlocks( BlockType* InBlock ) override {
+        while ( InBlock != nullptr ) {
+            BlockType* Next = InBlock->Next;
+            ReturnBlock( InBlock );
+            InBlock = Next;
+        }
+    }
+
+private:
+    BlockType* AllocateSlab( SlabShard& Shard ) {
+        SlabHeader* Header = Shard.Slabs;
+        const bool NeedsArena = Header == nullptr || Header->ConstructedCount + SlabBlockCount > Header->Capacity;
+        bool HeaderConstructed = false;
+
+        if ( NeedsArena ) {
+            Header = nullptr;
+            BlockType* Blocks = nullptr;
+            try {
+                Header = SlabHeaderAllocatorTraits::Allocate( SlabAllocator );
+                SlabHeaderAllocatorTraits::Construct( SlabAllocator, Header );
+                HeaderConstructed = true;
+                Blocks = BlockAllocatorTraits::Allocate( this->Allocator(), ArenaBlockCount );
+            }
+            catch ( ... ) {
+                if ( Blocks != nullptr ) {
+                    BlockAllocatorTraits::Deallocate( this->Allocator(), Blocks, ArenaBlockCount );
+                }
+                if ( Header != nullptr ) {
+                    if ( HeaderConstructed ) {
+                        SlabHeaderAllocatorTraits::Destroy( SlabAllocator, Header );
+                    }
+                    SlabHeaderAllocatorTraits::Deallocate( SlabAllocator, Header );
+                }
+                throw;
+            }
+
+            Header->Blocks = Blocks;
+            Header->Capacity = ArenaBlockCount;
+        }
+
+        BlockType* SlabBlocks = Header->Blocks + Header->ConstructedCount;
+        std::size_t ConstructedBlocks = 0;
+        try {
+            for ( ; ConstructedBlocks < SlabBlockCount; ++ConstructedBlocks ) {
+                BlockAllocatorTraits::Construct( this->Allocator(), SlabBlocks + ConstructedBlocks );
+                SlabBlocks[ ConstructedBlocks ].HasOwner = true;
+            }
+        }
+        catch ( ... ) {
+            BlockAllocatorTraits::Destroy( this->Allocator(), SlabBlocks, ConstructedBlocks );
+            if ( NeedsArena ) {
+                BlockAllocatorTraits::Deallocate( this->Allocator(), Header->Blocks, Header->Capacity );
+                SlabHeaderAllocatorTraits::Destroy( SlabAllocator, Header );
+                SlabHeaderAllocatorTraits::Deallocate( SlabAllocator, Header );
+            }
+            throw;
+        }
+
+        Header->ConstructedCount += SlabBlockCount;
+        if ( NeedsArena ) {
+            Header->Next = Shard.Slabs;
+            Shard.Slabs = Header;
+            ++Shard.DynamicArenaCount;
+            Shard.ReservedDynamicBlockCount += Header->Capacity;
+        }
+        ++Shard.DynamicSlabCount;
+        Shard.ConstructedDynamicBlockCount += SlabBlockCount;
+
+        // Fresh nodes are published once and removed once, so this simple
+        // Treiber stack cannot suffer ABA. Returned blocks use the full
+        // reference-counted FreeList instead.
+        for ( std::size_t Index = 1; Index + 1 < SlabBlockCount; ++Index ) {
+            SlabBlocks[ Index ].FreeListNext.store( SlabBlocks + Index + 1, std::memory_order_relaxed );
+        }
+        if constexpr ( SlabBlockCount > 1 ) {
+            SlabBlocks[ SlabBlockCount - 1 ].FreeListNext.store( nullptr, std::memory_order_relaxed );
+            Shard.FreshBlocks.store( SlabBlocks + 1, std::memory_order_release );
+        }
+        return SlabBlocks;
+    }
+
+    static BlockType* TryGetFreshBlock( SlabShard& Shard ) noexcept {
+        BlockType* Current = Shard.FreshBlocks.load( std::memory_order_acquire );
+        while ( Current != nullptr ) {
+            BlockType* Next = Current->FreeListNext.load( std::memory_order_relaxed );
+            if ( Shard.FreshBlocks.compare_exchange_weak( Current, Next, std::memory_order_acquire, std::memory_order_relaxed ) ) {
+                return Current;
+            }
+        }
+        return nullptr;
+    }
+
+    BlockType* TryGetRecycledBlockFromOtherShard( std::size_t ShardIndex ) noexcept {
+        for ( std::size_t Offset = 1; Offset < RecycleShardCount; ++Offset ) {
+            if ( BlockType* Block = Shards[ ( ShardIndex + Offset ) % RecycleShardCount ].RecycledBlocks.TryGet(); Block != nullptr ) {
+                return Block;
+            }
+        }
+        return nullptr;
+    }
+
+    static BlockType* SetRecycleShard( BlockType* InBlock, std::size_t ShardIndex ) noexcept {
+        InBlock->RecycleShard = static_cast<std::uint8_t>( ShardIndex );
+        return InBlock;
+    }
+
+    // Initial-pool blocks have not passed through a producer shard. Dividing by
+    // the complete block size distributes adjacent pool blocks evenly.
+    static std::size_t GetInitialRecycleShardIndex( const BlockType* InBlock ) noexcept {
+        return ( reinterpret_cast<std::uintptr_t>( InBlock ) / sizeof( BlockType ) ) % RecycleShardCount;
+    }
+
+    std::size_t GetThreadShardIndex() noexcept {
+        struct ThreadShardCache {
+            const SlabBlockManager* Owner{ nullptr };
+            std::size_t             Index{ 0 };
+        };
+        static thread_local ThreadShardCache Cache;
+        if ( Cache.Owner != this ) {
+            Cache.Owner = this;
+            Cache.Index = NextShard.fetch_add( 1, std::memory_order_relaxed ) % ShardCount;
+        }
+        return Cache.Index;
+    }
+
+    void ClearSlabs( SlabShard& Shard ) noexcept {
+        while ( Shard.Slabs != nullptr ) {
+            SlabHeader* Current = Shard.Slabs;
+            Shard.Slabs = Current->Next;
+            BlockAllocatorTraits::Destroy( this->Allocator(), Current->Blocks, Current->ConstructedCount );
+            BlockAllocatorTraits::Deallocate( this->Allocator(), Current->Blocks, Current->Capacity );
+            SlabHeaderAllocatorTraits::Destroy( SlabAllocator, Current );
+            SlabHeaderAllocatorTraits::Deallocate( SlabAllocator, Current );
+        }
+        Shard.DynamicSlabCount = 0;
+        Shard.DynamicArenaCount = 0;
+        Shard.ReservedDynamicBlockCount = 0;
+        Shard.ConstructedDynamicBlockCount = 0;
+    }
+
+    void ClearOwnedStorage() noexcept {
+        for ( std::size_t Index = 0; Index < ShardCount && Shards != nullptr; ++Index ) {
+            SlabShard& Shard = Shards[ Index ];
+            Shard.RecycledBlocks.Clear();
+            Shard.RecycledBlocks.Reset();
+            Shard.FreshBlocks.store( nullptr, std::memory_order_relaxed );
+        }
+        // Recycled lists may contain blocks owned by any allocation shard.
+        // Every list must be detached before any backing arena is
+        // released.
+        for ( std::size_t Index = 0; Index < ShardCount && Shards != nullptr; ++Index ) {
+            SlabShard& Shard = Shards[ Index ];
+            ClearSlabs( Shard );
+        }
+    }
+
+    void AllocateShards() {
+        std::size_t Constructed = 0;
+        try {
+            Shards = SlabShardAllocatorTraits::Allocate( ShardAllocator, ShardCount );
+            for ( ; Constructed < ShardCount; ++Constructed ) {
+                SlabShardAllocatorTraits::Construct( ShardAllocator, Shards + Constructed, this->Allocator() );
+            }
+        }
+        catch ( ... ) {
+            if ( Shards != nullptr ) {
+                SlabShardAllocatorTraits::Destroy( ShardAllocator, Shards, Constructed );
+                SlabShardAllocatorTraits::Deallocate( ShardAllocator, Shards, ShardCount );
+                Shards = nullptr;
+            }
+            throw;
+        }
+    }
+
+    void DestroyShards() noexcept {
+        if ( Shards != nullptr ) {
+            SlabShardAllocatorTraits::Destroy( ShardAllocator, Shards, ShardCount );
+            SlabShardAllocatorTraits::Deallocate( ShardAllocator, Shards, ShardCount );
+            Shards = nullptr;
+        }
+    }
+
+    BlockPool<BlockType, AllocatorType> Pool;
+    SlabHeaderAllocatorType SlabAllocator;
+    SlabShardAllocatorType ShardAllocator;
+    SlabShard* Shards{ nullptr };
+    std::atomic<std::size_t> NextShard{ 0 };
+};
+
+// Reserves a large raw backing allocation per active shard, then constructs
+// and publishes blocks in small slabs. This reduces allocator calls without
+// paying the construction cost for the unused portion of an arena.
+template <HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<BLOCK_TYPE>, std::size_t SLAB_BLOCK_COUNT = 32,
+          std::size_t ARENA_BYTES = 1024 * 1024, std::size_t SHARD_COUNT = 32,
+          std::size_t RECYCLE_SHARD_COUNT = ( SHARD_COUNT < 8 ? SHARD_COUNT : 8 )>
+using ArenaBlockManager =
+    SlabBlockManager<BLOCK_TYPE, ALLOCATOR_TYPE, SLAB_BLOCK_COUNT, SHARD_COUNT, RECYCLE_SHARD_COUNT,
+                     ArenaBlockCountFor<BLOCK_TYPE, SLAB_BLOCK_COUNT, ARENA_BYTES>>;
+
 #if HAKLE_CPP_VERSION >= 20
 
 template <class Node, HAKLE_CONCEPT( std::swappable ) ALLOCATOR_TYPE>
@@ -513,6 +912,26 @@ using HakleFlagsBlockManager = HakleBlockManager<HakleFlagsBlock<T, BLOCK_SIZE>,
 
 template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleCounterBlock<T, BLOCK_SIZE>>>
 using HakleCounterBlockManager = HakleBlockManager<HakleCounterBlock<T, BLOCK_SIZE>, ALLOCATOR_TYPE>;
+
+template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleFlagsBlock<T, BLOCK_SIZE>>, std::size_t SLAB_BLOCK_COUNT = 32,
+          std::size_t SHARD_COUNT = 32, std::size_t RECYCLE_SHARD_COUNT = ( SHARD_COUNT < 8 ? SHARD_COUNT : 8 )>
+using HakleFlagsSlabBlockManager = SlabBlockManager<HakleFlagsBlock<T, BLOCK_SIZE>, ALLOCATOR_TYPE, SLAB_BLOCK_COUNT, SHARD_COUNT, RECYCLE_SHARD_COUNT>;
+
+template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleCounterBlock<T, BLOCK_SIZE>>, std::size_t SLAB_BLOCK_COUNT = 32,
+          std::size_t SHARD_COUNT = 32, std::size_t RECYCLE_SHARD_COUNT = ( SHARD_COUNT < 8 ? SHARD_COUNT : 8 )>
+using HakleCounterSlabBlockManager = SlabBlockManager<HakleCounterBlock<T, BLOCK_SIZE>, ALLOCATOR_TYPE, SLAB_BLOCK_COUNT, SHARD_COUNT, RECYCLE_SHARD_COUNT>;
+
+template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleFlagsBlock<T, BLOCK_SIZE>>, std::size_t SLAB_BLOCK_COUNT = 32,
+          std::size_t ARENA_BYTES = 1024 * 1024, std::size_t SHARD_COUNT = 32,
+          std::size_t RECYCLE_SHARD_COUNT = ( SHARD_COUNT < 8 ? SHARD_COUNT : 8 )>
+using HakleFlagsArenaBlockManager =
+    ArenaBlockManager<HakleFlagsBlock<T, BLOCK_SIZE>, ALLOCATOR_TYPE, SLAB_BLOCK_COUNT, ARENA_BYTES, SHARD_COUNT, RECYCLE_SHARD_COUNT>;
+
+template <class T, std::size_t BLOCK_SIZE, HAKLE_CONCEPT( IsAllocator ) ALLOCATOR_TYPE = HakleAllocator<HakleCounterBlock<T, BLOCK_SIZE>>, std::size_t SLAB_BLOCK_COUNT = 32,
+          std::size_t ARENA_BYTES = 1024 * 1024, std::size_t SHARD_COUNT = 32,
+          std::size_t RECYCLE_SHARD_COUNT = ( SHARD_COUNT < 8 ? SHARD_COUNT : 8 )>
+using HakleCounterArenaBlockManager =
+    ArenaBlockManager<HakleCounterBlock<T, BLOCK_SIZE>, ALLOCATOR_TYPE, SLAB_BLOCK_COUNT, ARENA_BYTES, SHARD_COUNT, RECYCLE_SHARD_COUNT>;
 
 inline constexpr std::size_t HAKLE_DEFAULT_POOL_SIZE = 1024;
 
