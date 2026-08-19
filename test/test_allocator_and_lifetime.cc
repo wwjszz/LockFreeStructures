@@ -290,6 +290,22 @@ void test_enqueue_constructor_exception_keeps_queue_usable() {
     CHECK(queue.Size() == 0);
   }
 
+  {
+    hakle::ConcurrentQueue<throwing_probe> queue;
+    auto producer = queue.GetProducerToken();
+
+    lockfree_test::check_throws<std::runtime_error>(
+        [&] { static_cast<void>(queue.EnqueueWithToken(producer, 42)); });
+    CHECK(queue.Size() == 0);
+    CHECK(queue.EnqueueWithToken(producer, 7));
+
+    throwing_probe output;
+    CHECK(queue.TryDequeue(output));
+    CHECK(output.value == 7);
+    CHECK(!queue.TryDequeue(output));
+    CHECK(queue.Size() == 0);
+  }
+
   CHECK(throwing_probe::alive.load(std::memory_order_relaxed) == 0);
 }
 void test_custom_allocator_is_used_and_balanced() {

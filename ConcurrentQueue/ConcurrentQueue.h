@@ -327,11 +327,11 @@ public:
                 ++PO_IndexEntriesUsed();
             }
 
-            IndexEntry& Entry = this->CurrentIndexEntryArray.load( std::memory_order_relaxed )->Entries[ PO_NextIndexEntry ];
-            Entry.Base        = CurrentTailIndex;
-            Entry.InnerBlock  = this->TailBlock();
-            this->CurrentIndexEntryArray.load( std::memory_order_relaxed )->Tail.store( PO_NextIndexEntry, std::memory_order_release );
-            PO_NextIndexEntry = ( PO_NextIndexEntry + 1 ) & ( PO_IndexEntriesSize() - 1 );
+            IndexEntryArray* IndexArray      = this->CurrentIndexEntryArray.load( std::memory_order_relaxed );
+            std::size_t      IndexEntryIndex = PO_NextIndexEntry;
+            IndexEntry&      Entry           = IndexArray->Entries[ IndexEntryIndex ];
+            Entry.Base                       = CurrentTailIndex;
+            Entry.InnerBlock                 = this->TailBlock();
 
             HAKLE_CONSTEXPR_IF( !std::is_nothrow_constructible<ValueType, Args&&...>::value ) {
                 // we need to handle exception here
@@ -341,15 +341,17 @@ public:
                     // rollback
                     this->TailBlock()->SetAllEmpty();
                     this->TailBlock() = OldTailBlock == nullptr ? this->TailBlock() : OldTailBlock;
-                    PO_NextIndexEntry = ( PO_NextIndexEntry - 1 ) & ( PO_IndexEntriesSize() - 1 );
                     HAKLE_RETHROW;
                 }
             }
-
-            HAKLE_CONSTEXPR_IF( !std::is_nothrow_constructible<ValueType, Args&&...>::value ) {
-                this->TailIndex.store( NewTailIndex, std::memory_order_release );
-                return true;
+            else {
+                ValueAllocatorTraits::Construct( this->ValueAllocator(), ( *( this->TailBlock() ) )[ InnerIndex ], std::forward<Args>( args )... );
             }
+
+            IndexArray->Tail.store( IndexEntryIndex, std::memory_order_release );
+            PO_NextIndexEntry = ( IndexEntryIndex + 1 ) & ( PO_IndexEntriesSize() - 1 );
+            this->TailIndex.store( NewTailIndex, std::memory_order_release );
+            return true;
         }
 
         ValueAllocatorTraits::Construct( this->ValueAllocator(), ( *( this->TailBlock() ) )[ InnerIndex ], std::forward<Args>( args )... );
@@ -528,7 +530,6 @@ public:
     HAKLE_CPP14_CONSTEXPR bool Dequeue( U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), ValueType&&> ) {
         std::size_t FailedCount = this->DequeueFailedCount.load( std::memory_order_relaxed );
         if ( HAKLE_LIKELY( CircularLessThan( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount, this->TailIndex.load( std::memory_order_relaxed ) ) ) ) {
-            // TODO: understand this
             std::atomic_thread_fence( std::memory_order_acquire );
 
             std::size_t AttemptsCount = this->DequeueAttemptsCount.fetch_add( 1, std::memory_order_relaxed );
@@ -583,7 +584,6 @@ public:
         std::size_t DesiredCount = this->TailIndex.load( std::memory_order_relaxed ) - ( this->DequeueAttemptsCount.load( std::memory_order_relaxed ) - FailedCount );
         if ( HAKLE_LIKELY( CircularLessThan<std::size_t>( 0, DesiredCount ) ) ) {
             DesiredCount = std::min( DesiredCount, MaxCount );
-            // TODO: understand this
             std::atomic_thread_fence( std::memory_order_acquire );
 
             std::size_t AttemptsCount = this->DequeueAttemptsCount.fetch_add( DesiredCount, std::memory_order_relaxed );
@@ -631,6 +631,7 @@ public:
                                 --NeedCount;
                             }
                         }
+                        // TODO: pr
                         HAKLE_CATCH( ... ) {
                             // we need to destroy all the remaining values
                             goto Enter;
@@ -1393,7 +1394,8 @@ public:
           ImplicitProducerAllocatorPair( MakeDefaultImplicitBlockManager( ImplicitAllocatorType( InAllocator ) ), ImplicitProducerAllocatorType( InAllocator ) ) {}
 
     template <class... Args1, class... Args2>
-    HAKLE_REQUIRES( HasMakeImplicitBlockManager<Traits>&& HasMakeExplicitBlockManager<Traits>&& std::invocable<decltype( Traits::MakeExplicitBlockManager ), const ExplicitAllocatorType&, Args1&&...>&& std::invocable<decltype( Traits::MakeImplicitBlockManager ), const ImplicitAllocatorType&, Args2&&...> )
+    HAKLE_REQUIRES( HasMakeImplicitBlockManager<Traits>&& HasMakeExplicitBlockManager<Traits>&& std::invocable<decltype( Traits::MakeExplicitBlockManager ), const ExplicitAllocatorType&, Args1&&...>&&
+                                                                                                std::invocable<decltype( Traits::MakeImplicitBlockManager ), const ImplicitAllocatorType&, Args2&&...> )
     explicit constexpr ConcurrentQueue( std::piecewise_construct_t, std::tuple<Args1...> FirstArgs, std::tuple<Args2...> SecondArgs, const AllocatorType& InAllocator )
         :
 #if HAKLE_CPP_VERSION >= 17
@@ -1489,8 +1491,7 @@ public:
     template <class... Args>
     HAKLE_REQUIRES( std::is_constructible_v<T, Args...> )
     constexpr bool TryEnqueue( Args&&... args ) {
-        HAKLE_CONSTEXPR_IF( InitialHashSize == 0 )
-        return false;
+        HAKLE_CONSTEXPR_IF( InitialHashSize == 0 ) return false;
         return InnerEnqueue<AllocMode::CannotAlloc>( std::forward<Args>( args )... );
     }
 
@@ -1931,7 +1932,7 @@ private:
 
         std::uint32_t Delta = GlobalOffset - Token.LastKnownGlobalOffset;
         if ( Delta >= ProducerCount ) {
-            Delta = Delta & ProducerCount;
+            Delta = Delta % ProducerCount;
         }
         for ( std::uint32_t i = 0; i < Delta; ++i ) {
             Token.DesiredProducer = Token.DesiredProducer->Next;

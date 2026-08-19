@@ -17,15 +17,15 @@ namespace hakle {
 #define HAKLE_SEM ;
 
 // Support up to 10 arguments with fixed-arity macro expansion.
-#define HAKLE_EXPAND_10( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_9( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_9( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_8( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_8( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_7( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_7( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_6( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_6( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_5( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_5( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_4( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_4( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_3( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_3( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_2( macro, concat, __VA_ARGS__ )
-#define HAKLE_EXPAND_2( macro, concat, first, ... ) macro( first ) HAKLE_EXPAND_CONCAT( concat ) HAKLE_EXPAND_1( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_10( macro, concat, first, ... ) macro( first ) concat HAKLE_EXPAND_9( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_9( macro, concat, first, ... ) macro( first ) concat HAKLE_EXPAND_8( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_8( macro, concat, first, ... ) macro( first ) concat HAKLE_EXPAND_7( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_7( macro, concat, first, ... ) macro( first ) concat HAKLE_EXPAND_6( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_6( macro, concat, first, ... ) macro( first ) concat HAKLE_EXPAND_5( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_5( macro, concat, first, ... ) macro( first ) concat HAKLE_EXPAND_4( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_4( macro, concat, first, ... ) macro( first ) concat HAKLE_EXPAND_3( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_3( macro, concat, first, ... ) macro( first ) concat HAKLE_EXPAND_2( macro, concat, __VA_ARGS__ )
+#define HAKLE_EXPAND_2( macro, concat, first, ... ) macro( first ) concat HAKLE_EXPAND_1( macro, concat, __VA_ARGS__ )
 #define HAKLE_EXPAND_1( macro, concat, first ) macro( first )
 #define HAKLE_EXPAND_0( macro, concat )
 
@@ -41,15 +41,13 @@ namespace hakle {
 #define HAKLE_EXPAND_COMMA_1( macro, first ) macro( first )
 #define HAKLE_EXPAND_COMMA_0( macro )
 
-#define HAKLE_EXPAND_CONCAT( x ) x
-
 #define HAKLE_ARGS_COUNT( ... ) HAKLE_ARGS_COUNT_IMPL( __VA_ARGS__, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 )
 #define HAKLE_ARGS_COUNT_IMPL( _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N, ... ) N
 
 #define HAKLE_CONCAT_( a, b ) a##b
 #define HAKLE_CONCAT( a, b ) HAKLE_CONCAT_( a, b )
 
-#define HAKLE_FOR_EACH( macro, concat, ... ) HAKLE_CONCAT( HAKLE_EXPAND_, HAKLE_ARGS_COUNT( __VA_ARGS__ ) )( macro, HAKLE_EXPAND_CONCAT( concat ), __VA_ARGS__ )
+#define HAKLE_FOR_EACH( macro, concat, ... ) HAKLE_CONCAT( HAKLE_EXPAND_, HAKLE_ARGS_COUNT( __VA_ARGS__ ) )( macro, concat, __VA_ARGS__ )
 #define HAKLE_FOR_EACH_COMMA( macro, ... ) HAKLE_CONCAT( HAKLE_EXPAND_COMMA_, HAKLE_ARGS_COUNT( __VA_ARGS__ ) )( macro, __VA_ARGS__ )
 
 #if HAKLE_CPP_VERSION >= 20
