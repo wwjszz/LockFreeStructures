@@ -1,0 +1,459 @@
+{
+  "context": {
+    "host": "MUSKBINLI-PC0",
+    "platform": "Windows-11-10.0.22621-SP0",
+    "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "logical_cpus": 32,
+    "compiler": "MSVC 19.44.35222",
+    "build": "C++20 -O3 -DNDEBUG",
+    "repetitions": 7,
+    "minimum_timed_seconds_per_sample": 0.25,
+    "aggregation": "median; one untimed warm-up per process; deterministic randomized variant order",
+    "scenario_set": "fan_in",
+    "scenario": "Selected scalar and/or 64-item bulk MPMC workloads; equal preallocated block count",
+    "baseline_ref": "custom_dev",
+    "baseline_commit": "00eab5b81ef5eedd688b7bf003adc363aaf8819f"
+  },
+  "definitions": {
+    "original": "queue headers from the recorded baseline git ref",
+    "consumer_cache": "thread-local token-less consumer cache only; legacy ProducerToken dispatch and byte flags",
+    "direct_dispatch": "direct ProducerToken dispatch; consumer cache disabled; byte flags",
+    "word_flags": "direct ProducerToken dispatch plus WordFlagsCheckPolicy; consumer cache disabled",
+    "all_optimizations": "consumer cache and direct ProducerToken dispatch with opt-in WordFlagsCheckPolicy",
+    "moodycamel": "vendored moodycamel queue using matching implicit, token, and token-bulk paths"
+  },
+  "results": [
+    {
+      "name": "original",
+      "label": "Original Hakle",
+      "path": "implicit",
+      "producers": 1,
+      "consumers": 1,
+      "items_per_producer": 100000,
+      "samples_million_items_per_second": [
+        41.5674776055,
+        41.8350194174,
+        41.781250087,
+        41.6850775759,
+        42.2233880126,
+        41.7190472482,
+        41.6525345567
+      ],
+      "median_million_items_per_second": 41.7190472482
+    },
+    {
+      "name": "original",
+      "label": "Original Hakle",
+      "path": "implicit",
+      "producers": 2,
+      "consumers": 1,
+      "items_per_producer": 100000,
+      "samples_million_items_per_second": [
+        45.7005440335,
+        44.9821077748,
+        44.7689124672,
+        45.1462083719,
+        45.089532386,
+        44.3841559659,
+        43.899137342
+      ],
+      "median_million_items_per_second": 44.9821077748
+    },
+    {
+      "name": "original",
+      "label": "Original Hakle",
+      "path": "implicit",
+      "producers": 4,
+      "consumers": 1,
+      "items_per_producer": 100000,
+      "samples_million_items_per_second": [
+        45.3835358704,
+        41.0770237642,
+        45.2870083676,
+        45.2864602853,
+        45.284250411,
+        45.6456059415,
+        44.8992514985
+      ],
+      "median_million_items_per_second": 45.2864602853
+    },
+    {
+      "name": "original",
+      "label": "Original Hakle",
+      "path": "implicit",
+      "producers": 8,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        45.76964218,
+        45.5282612757,
+        45.9866535631,
+        45.7267558286,
+        45.5817886608,
+        45.6297156443,
+        45.8775283561
+      ],
+      "median_million_items_per_second": 45.7267558286
+    },
+    {
+      "name": "original",
+      "label": "Original Hakle",
+      "path": "implicit",
+      "producers": 12,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        44.5485647742,
+        44.0963326937,
+        43.6375662793,
+        43.9179935487,
+        43.6284812849,
+        44.2865495145,
+        44.4624894548
+      ],
+      "median_million_items_per_second": 44.0963326937
+    },
+    {
+      "name": "original",
+      "label": "Original Hakle",
+      "path": "implicit",
+      "producers": 16,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        40.7565353496,
+        40.5717495787,
+        41.008234769,
+        40.8840065697,
+        40.889857664,
+        41.2845038218,
+        41.0439529431
+      ],
+      "median_million_items_per_second": 40.889857664
+    },
+    {
+      "name": "original",
+      "label": "Original Hakle",
+      "path": "implicit",
+      "producers": 20,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        35.8304075151,
+        36.4805731828,
+        36.4684134307,
+        36.6510875111,
+        36.5159943707,
+        36.0441151134,
+        36.0292716214
+      ],
+      "median_million_items_per_second": 36.4684134307
+    },
+    {
+      "name": "original",
+      "label": "Original Hakle",
+      "path": "implicit",
+      "producers": 24,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        32.4825106815,
+        32.2180764888,
+        31.7326239329,
+        32.3147518381,
+        32.3453746692,
+        32.2105527139,
+        32.2079467741
+      ],
+      "median_million_items_per_second": 32.2180764888
+    },
+    {
+      "name": "consumer_cache",
+      "label": "Optimization 1 \u00b7 consumer cache",
+      "path": "implicit",
+      "producers": 1,
+      "consumers": 1,
+      "items_per_producer": 100000,
+      "samples_million_items_per_second": [
+        43.7115214431,
+        43.0675242953,
+        42.1252590604,
+        42.6133025987,
+        42.3144233103,
+        42.2133830761,
+        41.4332890183
+      ],
+      "median_million_items_per_second": 42.3144233103
+    },
+    {
+      "name": "consumer_cache",
+      "label": "Optimization 1 \u00b7 consumer cache",
+      "path": "implicit",
+      "producers": 2,
+      "consumers": 1,
+      "items_per_producer": 100000,
+      "samples_million_items_per_second": [
+        52.1945432977,
+        53.7698815125,
+        52.0521152087,
+        52.8885224407,
+        52.3201405985,
+        52.9435215107,
+        53.2545272309
+      ],
+      "median_million_items_per_second": 52.8885224407
+    },
+    {
+      "name": "consumer_cache",
+      "label": "Optimization 1 \u00b7 consumer cache",
+      "path": "implicit",
+      "producers": 4,
+      "consumers": 1,
+      "items_per_producer": 100000,
+      "samples_million_items_per_second": [
+        56.2550102118,
+        56.266418365,
+        58.2153685426,
+        58.5146992483,
+        57.6604880337,
+        56.5068412519,
+        56.6997664678
+      ],
+      "median_million_items_per_second": 56.6997664678
+    },
+    {
+      "name": "consumer_cache",
+      "label": "Optimization 1 \u00b7 consumer cache",
+      "path": "implicit",
+      "producers": 8,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        58.1701098393,
+        58.1728078285,
+        55.2947923365,
+        56.9138466646,
+        57.2785983291,
+        57.4941417861,
+        58.2900227961
+      ],
+      "median_million_items_per_second": 57.4941417861
+    },
+    {
+      "name": "consumer_cache",
+      "label": "Optimization 1 \u00b7 consumer cache",
+      "path": "implicit",
+      "producers": 12,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        58.1349606988,
+        58.6236572251,
+        57.0613861637,
+        58.9932912829,
+        56.5549104979,
+        57.8427656246,
+        57.5207594018
+      ],
+      "median_million_items_per_second": 57.8427656246
+    },
+    {
+      "name": "consumer_cache",
+      "label": "Optimization 1 \u00b7 consumer cache",
+      "path": "implicit",
+      "producers": 16,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        56.9013875245,
+        56.7858499126,
+        57.4451508514,
+        58.0965135976,
+        59.1728415344,
+        58.5705472608,
+        57.455717203
+      ],
+      "median_million_items_per_second": 57.455717203
+    },
+    {
+      "name": "consumer_cache",
+      "label": "Optimization 1 \u00b7 consumer cache",
+      "path": "implicit",
+      "producers": 20,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        56.9346606448,
+        57.889957366,
+        57.9406949948,
+        58.0724814255,
+        57.311648134,
+        58.4540311654,
+        57.8653473367
+      ],
+      "median_million_items_per_second": 57.889957366
+    },
+    {
+      "name": "consumer_cache",
+      "label": "Optimization 1 \u00b7 consumer cache",
+      "path": "implicit",
+      "producers": 24,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        57.9177026572,
+        57.0237183028,
+        58.6193343098,
+        58.3959967298,
+        57.1646795324,
+        58.0743657144,
+        57.2219233083
+      ],
+      "median_million_items_per_second": 57.9177026572
+    },
+    {
+      "name": "moodycamel",
+      "label": "moodycamel",
+      "path": "implicit",
+      "producers": 1,
+      "consumers": 1,
+      "items_per_producer": 100000,
+      "samples_million_items_per_second": [
+        38.2758637188,
+        37.6201716985,
+        37.9453738398,
+        37.1473102551,
+        40.0627040818,
+        36.4804024899,
+        37.3166620484
+      ],
+      "median_million_items_per_second": 37.6201716985
+    },
+    {
+      "name": "moodycamel",
+      "label": "moodycamel",
+      "path": "implicit",
+      "producers": 2,
+      "consumers": 1,
+      "items_per_producer": 100000,
+      "samples_million_items_per_second": [
+        43.7374354276,
+        42.4634293544,
+        41.4483983382,
+        43.6114049374,
+        42.6049452507,
+        43.4429913422,
+        43.1070439704
+      ],
+      "median_million_items_per_second": 43.1070439704
+    },
+    {
+      "name": "moodycamel",
+      "label": "moodycamel",
+      "path": "implicit",
+      "producers": 4,
+      "consumers": 1,
+      "items_per_producer": 100000,
+      "samples_million_items_per_second": [
+        45.3777482388,
+        45.7067384735,
+        44.5640600405,
+        45.2429742731,
+        45.3697261116,
+        44.8166458295,
+        45.3086947776
+      ],
+      "median_million_items_per_second": 45.3086947776
+    },
+    {
+      "name": "moodycamel",
+      "label": "moodycamel",
+      "path": "implicit",
+      "producers": 8,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        44.6869955257,
+        44.3886415807,
+        45.6922993901,
+        44.662635598,
+        44.8462219184,
+        44.6452417341,
+        41.8791971293
+      ],
+      "median_million_items_per_second": 44.662635598
+    },
+    {
+      "name": "moodycamel",
+      "label": "moodycamel",
+      "path": "implicit",
+      "producers": 12,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        43.9375608718,
+        44.6545558811,
+        45.0188249771,
+        43.4246011793,
+        44.5816132913,
+        44.6063838778,
+        44.8677228686
+      ],
+      "median_million_items_per_second": 44.6063838778
+    },
+    {
+      "name": "moodycamel",
+      "label": "moodycamel",
+      "path": "implicit",
+      "producers": 16,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        42.7813369473,
+        43.2152451038,
+        42.5585274749,
+        42.9998541076,
+        43.6687181867,
+        44.62306064,
+        42.7764514107
+      ],
+      "median_million_items_per_second": 42.9998541076
+    },
+    {
+      "name": "moodycamel",
+      "label": "moodycamel",
+      "path": "implicit",
+      "producers": 20,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        43.0218551024,
+        38.7452580647,
+        44.2748390148,
+        42.4364543031,
+        44.0552085188,
+        42.4123692976,
+        44.2938290207
+      ],
+      "median_million_items_per_second": 43.0218551024
+    },
+    {
+      "name": "moodycamel",
+      "label": "moodycamel",
+      "path": "implicit",
+      "producers": 24,
+      "consumers": 1,
+      "items_per_producer": 50000,
+      "samples_million_items_per_second": [
+        40.6071521227,
+        42.0310656276,
+        42.3181573107,
+        40.7493042434,
+        38.1465846091,
+        40.7224924277,
+        37.8804768363
+      ],
+      "median_million_items_per_second": 40.7224924277
+    }
+  ]
+}
