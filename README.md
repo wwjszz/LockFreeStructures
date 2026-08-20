@@ -168,6 +168,61 @@ ShardedSlab32 was 27.1% to 76.5% faster than moodycamel in this specific burst
 workload. This manager remains opt-in: it retains slabs until destruction and
 can hold up to 31 unused blocks per active allocation shard.
 
+### Fixed scenario: SlowQueue bulk block requisition
+
+An implicit bulk enqueue can make `SlowQueue` need several blocks at once. When
+the selected block manager exposes `RequisitionBlocks`, the optimized path
+obtains a linked batch with fewer shared-pool operations and consumes that batch
+inside the current enqueue. The controlled A/B test changes only
+`UseBulkBlockRequisition`; both variants use the same queue implementation,
+payload, thread matrix, and validation.
+
+The Hakle-manager cases use equal block preallocation to isolate steady-state
+algorithm cost. The Slab-manager cases start with an empty pool to exercise
+allocation and recycling slow paths. Each point below is the median of 11
+randomly interleaved repetitions.
+
+![SlowQueue block batch requisition: original versus optimized](docs/slowqueue-block-batch-comparison.svg)
+
+| Block manager / setup | Bulk size | Geometric-mean improvement |
+| --- | ---: | ---: |
+| Hakle / equal preallocation | 64 | **+20.8%** |
+| Hakle / equal preallocation | 256 | **+70.2%** |
+| Slab / initial pool 0 | 64 | **+7.6%** |
+| Slab / initial pool 0 | 256 | **+6.9%** |
+
+The default Hakle manager benefits most because a large bulk enqueue amortizes
+more pool operations. Slab remains a smaller positive overall; its 16P/16C,
+bulk-256 point regresses by 4.7%, so batch requisition is not universally better
+for every manager and contention level. This switch affects implicit-producer
+`SlowQueue`; explicit-producer `FastQueue` is unchanged.
+
+### Fixed scenario: FastQueue bulk block requisition
+
+The same idea was tested separately on the explicit-producer `FastQueue` path.
+The implementation keeps a requisitioned block chain local to one bulk enqueue,
+returns any unused reservation on rollback, and falls back to scalar
+`RequisitionBlock` for managers without the optional batch extension. The A/B
+switch is independent from the `SlowQueue` switch.
+
+The matrix again uses 1/2/4/8/16 producers and consumers, bulk sizes 64 and 256,
+and 11 randomly interleaved repetitions per point:
+
+![FastQueue block batch requisition: original versus optimized](docs/fastqueue-block-batch-comparison.svg)
+
+| Block manager / setup | Bulk size | Geometric-mean change | Per-point range |
+| --- | ---: | ---: | ---: |
+| Hakle / equal preallocation | 64 | **+2.5%** | +0.4% to +4.1% |
+| Hakle / equal preallocation | 256 | **+6.9%** | +3.1% to +9.3% |
+| Slab / initial pool 0 | 64 | **-0.4%** | -4.0% to +2.0% |
+| Slab / initial pool 0 | 256 | **+0.1%** | -18.1% to +7.4% |
+
+The default Hakle manager has a consistent positive result, especially for
+256-item batches. Slab is effectively neutral and includes a large regression,
+so `UseFastQueueBulkBlockRequisition` remains an opt-in trait and is disabled by
+default. Enable it only for block managers and bulk-heavy workloads that have
+been measured independently.
+
 ### Optional WordFlags policy
 
 `HakleWordFlagsBlock` trades a byte flag store for an atomic word RMW. The
@@ -190,6 +245,8 @@ Raw optimization results are available in:
 - [`benchmark/results/windows-msvc-19.44-sharded-manager-burst-confirmation-2026-08-20.json`](benchmark/results/windows-msvc-19.44-sharded-manager-burst-confirmation-2026-08-20.json)
 - [`benchmark/results/windows-msvc-19.44-implicit-cache-combination-2026-08-20.json`](benchmark/results/windows-msvc-19.44-implicit-cache-combination-2026-08-20.json)
 - [`benchmark/results/windows-msvc-19.44-implicit-both-caches-default-confirmation-2026-08-20.json`](benchmark/results/windows-msvc-19.44-implicit-both-caches-default-confirmation-2026-08-20.json)
+- [`benchmark/results/windows-msvc-19.44-slowqueue-block-batch-2026-08-20.json`](benchmark/results/windows-msvc-19.44-slowqueue-block-batch-2026-08-20.json)
+- [`benchmark/results/windows-msvc-19.44-fastqueue-block-batch-2026-08-20.json`](benchmark/results/windows-msvc-19.44-fastqueue-block-batch-2026-08-20.json)
 
 Regenerate the main comparison from a Visual Studio 2022 Developer Command
 Prompt with:

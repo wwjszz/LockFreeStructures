@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850" role="img" aria-labelledby="fast-batch-title fast-batch-desc">
+<title id="fast-batch-title">FastQueue block batch requisition: original versus optimized</title>
+<desc id="fast-batch-desc">Four line charts compare FastQueue batch requisition off and on for Hakle and Slab block managers, bulk sizes 64 and 256, and one through sixteen balanced producer and consumer threads.</desc>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#24292f}.title{font-size:26px;font-weight:500}.meta{font-size:13px;fill:#57606a}.panel-title{font-size:17px;font-weight:500}.panel-note{font-size:12px;fill:#57606a}.gain{font-size:14px;font-weight:500;fill:#1a7f37}.axis{font-size:11px;fill:#57606a}.axis-title{font-size:12px;fill:#24292f}.grid{stroke:#d0d7de;stroke-width:1}.frame{fill:none;stroke:#8c959f;stroke-width:1}.off{fill:none;stroke:#6e7781;stroke-width:2.6;stroke-dasharray:7 5;stroke-linejoin:round;stroke-linecap:round}.on{fill:none;stroke:#009e73;stroke-width:3;stroke-linejoin:round;stroke-linecap:round}.off-dot{fill:#ffffff;stroke:#6e7781;stroke-width:2}.on-dot{fill:#009e73;stroke:#ffffff;stroke-width:1.4}.legend{font-size:13px;fill:#24292f}@media(prefers-color-scheme:dark){text,.axis-title,.legend{fill:#f0f6fc}.meta,.panel-note,.axis{fill:#b1bac4}.grid{stroke:#30363d}.frame{stroke:#8c959f}.off-dot{fill:#0d1117}.on-dot{stroke:#0d1117}.gain{fill:#3fb950}}</style>
+<text x="46" y="45" class="title">FastQueue block batch requisition · original vs optimized</text>
+<text x="46" y="69" class="meta">MSVC 19.44 Release · median of 11 randomly interleaved runs · higher is better</text>
+<line x1="818" y1="47" x2="866" y2="47" class="off"/><circle cx="842" cy="47" r="4.5" class="off-dot"/><text x="878" y="52" class="legend">Batch off</text>
+<line x1="1000" y1="47" x2="1048" y2="47" class="on"/><circle cx="1024" cy="47" r="4.5" class="on-dot"/><text x="1060" y="52" class="legend">Batch on</text>
+<text x="46" y="118" class="panel-title">Hakle · bulk 64</text>
+<text x="46" y="138" class="panel-note">Equal preallocation</text>
+<text x="588" y="118" text-anchor="end" class="gain">Geometric mean +2.5%</text>
+<line x1="112" y1="379.0" x2="568" y2="379.0" class="grid"/>
+<text x="102" y="383.0" text-anchor="end" class="axis">300M</text>
+<line x1="112" y1="322.0" x2="568" y2="322.0" class="grid"/>
+<text x="102" y="326.0" text-anchor="end" class="axis">463M</text>
+<line x1="112" y1="265.0" x2="568" y2="265.0" class="grid"/>
+<text x="102" y="269.0" text-anchor="end" class="axis">625M</text>
+<line x1="112" y1="208.0" x2="568" y2="208.0" class="grid"/>
+<text x="102" y="212.0" text-anchor="end" class="axis">788M</text>
+<line x1="112" y1="151.0" x2="568" y2="151.0" class="grid"/>
+<text x="102" y="155.0" text-anchor="end" class="axis">950M</text>
+<rect x="112" y="151" width="456" height="228" class="frame"/>
+<text x="112.0" y="401" text-anchor="middle" class="axis">1</text>
+<text x="226.0" y="401" text-anchor="middle" class="axis">2</text>
+<text x="340.0" y="401" text-anchor="middle" class="axis">4</text>
+<text x="454.0" y="401" text-anchor="middle" class="axis">8</text>
+<text x="568.0" y="401" text-anchor="middle" class="axis">16</text>
+<text x="340" y="426" text-anchor="middle" class="axis-title">Producer / consumer threads (P=C)</text>
+<text x="59" y="265" text-anchor="middle" transform="rotate(-90 59 265)" class="axis-title">Median throughput (M items/s)</text>
+<polyline points="112.0,349.1 226.0,280.6 340.0,181.6 454.0,203.4 568.0,197.7" class="off"/>
+<polyline points="112.0,346.1 226.0,279.8 340.0,175.7 454.0,191.8 568.0,187.1" class="on"/>
+<circle cx="112.0" cy="349.1" r="5" class="off-dot"><title>Batch off · 1P/1C · 385.3 M items/s</title></circle>
+<circle cx="226.0" cy="280.6" r="5" class="off-dot"><title>Batch off · 2P/2C · 580.4 M items/s</title></circle>
+<circle cx="340.0" cy="181.6" r="5" class="off-dot"><title>Batch off · 4P/4C · 862.8 M items/s</title></circle>
+<circle cx="454.0" cy="203.4" r="5" class="off-dot"><title>Batch off · 8P/8C · 800.5 M items/s</title></circle>
+<circle cx="568.0" cy="197.7" r="5" class="off-dot"><title>Batch off · 16P/16C · 816.8 M items/s</title></circle>
+<circle cx="112.0" cy="346.1" r="5" class="on-dot"><title>Batch on · 1P/1C · 393.8 M items/s · +2.2%</title></circle>
+<circle cx="226.0" cy="279.8" r="5" class="on-dot"><title>Batch on · 2P/2C · 582.8 M items/s · +0.4%</title></circle>
+<circle cx="340.0" cy="175.7" r="5" class="on-dot"><title>Batch on · 4P/4C · 879.6 M items/s · +1.9%</title></circle>
+<circle cx="454.0" cy="191.8" r="5" class="on-dot"><title>Batch on · 8P/8C · 833.6 M items/s · +4.1%</title></circle>
+<circle cx="568.0" cy="187.1" r="5" class="on-dot"><title>Batch on · 16P/16C · 847.0 M items/s · +3.7%</title></circle>
+<text x="616" y="118" class="panel-title">Hakle · bulk 256</text>
+<text x="616" y="138" class="panel-note">Equal preallocation</text>
+<text x="1158" y="118" text-anchor="end" class="gain">Geometric mean +6.9%</text>
+<line x1="682" y1="379.0" x2="1138" y2="379.0" class="grid"/>
+<text x="672" y="383.0" text-anchor="end" class="axis">400M</text>
+<line x1="682" y1="322.0" x2="1138" y2="322.0" class="grid"/>
+<text x="672" y="326.0" text-anchor="end" class="axis">688M</text>
+<line x1="682" y1="265.0" x2="1138" y2="265.0" class="grid"/>
+<text x="672" y="269.0" text-anchor="end" class="axis">975M</text>
+<line x1="682" y1="208.0" x2="1138" y2="208.0" class="grid"/>
+<text x="672" y="212.0" text-anchor="end" class="axis">1263M</text>
+<line x1="682" y1="151.0" x2="1138" y2="151.0" class="grid"/>
+<text x="672" y="155.0" text-anchor="end" class="axis">1550M</text>
+<rect x="682" y="151" width="456" height="228" class="frame"/>
+<text x="682.0" y="401" text-anchor="middle" class="axis">1</text>
+<text x="796.0" y="401" text-anchor="middle" class="axis">2</text>
+<text x="910.0" y="401" text-anchor="middle" class="axis">4</text>
+<text x="1024.0" y="401" text-anchor="middle" class="axis">8</text>
+<text x="1138.0" y="401" text-anchor="middle" class="axis">16</text>
+<text x="910" y="426" text-anchor="middle" class="axis-title">Producer / consumer threads (P=C)</text>
+<text x="629" y="265" text-anchor="middle" transform="rotate(-90 629 265)" class="axis-title">Median throughput (M items/s)</text>
+<polyline points="682.0,351.6 796.0,287.5 910.0,196.4 1024.0,266.8 1138.0,273.8" class="off"/>
+<polyline points="682.0,344.8 796.0,271.5 910.0,179.0 1024.0,260.8 1138.0,257.2" class="on"/>
+<circle cx="682.0" cy="351.6" r="5" class="off-dot"><title>Batch off · 1P/1C · 538.4 M items/s</title></circle>
+<circle cx="796.0" cy="287.5" r="5" class="off-dot"><title>Batch off · 2P/2C · 861.6 M items/s</title></circle>
+<circle cx="910.0" cy="196.4" r="5" class="off-dot"><title>Batch off · 4P/4C · 1320.8 M items/s</title></circle>
+<circle cx="1024.0" cy="266.8" r="5" class="off-dot"><title>Batch off · 8P/8C · 966.1 M items/s</title></circle>
+<circle cx="1138.0" cy="273.8" r="5" class="off-dot"><title>Batch off · 16P/16C · 930.6 M items/s</title></circle>
+<circle cx="682.0" cy="344.8" r="5" class="on-dot"><title>Batch on · 1P/1C · 572.3 M items/s · +6.3%</title></circle>
+<circle cx="796.0" cy="271.5" r="5" class="on-dot"><title>Batch on · 2P/2C · 942.1 M items/s · +9.3%</title></circle>
+<circle cx="910.0" cy="179.0" r="5" class="on-dot"><title>Batch on · 4P/4C · 1408.9 M items/s · +6.7%</title></circle>
+<circle cx="1024.0" cy="260.8" r="5" class="on-dot"><title>Batch on · 8P/8C · 996.2 M items/s · +3.1%</title></circle>
+<circle cx="1138.0" cy="257.2" r="5" class="on-dot"><title>Batch on · 16P/16C · 1014.3 M items/s · +9.0%</title></circle>
+<text x="46" y="483" class="panel-title">Slab · bulk 64</text>
+<text x="46" y="503" class="panel-note">Initial pool 0</text>
+<text x="588" y="483" text-anchor="end" class="gain">Geometric mean -0.4%</text>
+<line x1="112" y1="744.0" x2="568" y2="744.0" class="grid"/>
+<text x="102" y="748.0" text-anchor="end" class="axis">300M</text>
+<line x1="112" y1="687.0" x2="568" y2="687.0" class="grid"/>
+<text x="102" y="691.0" text-anchor="end" class="axis">513M</text>
+<line x1="112" y1="630.0" x2="568" y2="630.0" class="grid"/>
+<text x="102" y="634.0" text-anchor="end" class="axis">725M</text>
+<line x1="112" y1="573.0" x2="568" y2="573.0" class="grid"/>
+<text x="102" y="577.0" text-anchor="end" class="axis">938M</text>
+<line x1="112" y1="516.0" x2="568" y2="516.0" class="grid"/>
+<text x="102" y="520.0" text-anchor="end" class="axis">1150M</text>
+<rect x="112" y="516" width="456" height="228" class="frame"/>
+<text x="112.0" y="766" text-anchor="middle" class="axis">1</text>
+<text x="226.0" y="766" text-anchor="middle" class="axis">2</text>
+<text x="340.0" y="766" text-anchor="middle" class="axis">4</text>
+<text x="454.0" y="766" text-anchor="middle" class="axis">8</text>
+<text x="568.0" y="766" text-anchor="middle" class="axis">16</text>
+<text x="340" y="791" text-anchor="middle" class="axis-title">Producer / consumer threads (P=C)</text>
+<text x="59" y="630" text-anchor="middle" transform="rotate(-90 59 630)" class="axis-title">Median throughput (M items/s)</text>
+<polyline points="112.0,722.5 226.0,665.3 340.0,573.4 454.0,567.5 568.0,546.8" class="off"/>
+<polyline points="112.0,721.2 226.0,662.2 340.0,583.4 454.0,568.5 568.0,548.7" class="on"/>
+<circle cx="112.0" cy="722.5" r="5" class="off-dot"><title>Batch off · 1P/1C · 380.1 M items/s</title></circle>
+<circle cx="226.0" cy="665.3" r="5" class="off-dot"><title>Batch off · 2P/2C · 593.2 M items/s</title></circle>
+<circle cx="340.0" cy="573.4" r="5" class="off-dot"><title>Batch off · 4P/4C · 935.8 M items/s</title></circle>
+<circle cx="454.0" cy="567.5" r="5" class="off-dot"><title>Batch off · 8P/8C · 958.0 M items/s</title></circle>
+<circle cx="568.0" cy="546.8" r="5" class="off-dot"><title>Batch off · 16P/16C · 1035.1 M items/s</title></circle>
+<circle cx="112.0" cy="721.2" r="5" class="on-dot"><title>Batch on · 1P/1C · 385.0 M items/s · +1.3%</title></circle>
+<circle cx="226.0" cy="662.2" r="5" class="on-dot"><title>Batch on · 2P/2C · 604.9 M items/s · +2.0%</title></circle>
+<circle cx="340.0" cy="583.4" r="5" class="on-dot"><title>Batch on · 4P/4C · 898.8 M items/s · -4.0%</title></circle>
+<circle cx="454.0" cy="568.5" r="5" class="on-dot"><title>Batch on · 8P/8C · 954.3 M items/s · -0.4%</title></circle>
+<circle cx="568.0" cy="548.7" r="5" class="on-dot"><title>Batch on · 16P/16C · 1028.1 M items/s · -0.7%</title></circle>
+<text x="616" y="483" class="panel-title">Slab · bulk 256</text>
+<text x="616" y="503" class="panel-note">Initial pool 0</text>
+<text x="1158" y="483" text-anchor="end" class="gain">Geometric mean +0.1%</text>
+<line x1="682" y1="744.0" x2="1138" y2="744.0" class="grid"/>
+<text x="672" y="748.0" text-anchor="end" class="axis">400M</text>
+<line x1="682" y1="687.0" x2="1138" y2="687.0" class="grid"/>
+<text x="672" y="691.0" text-anchor="end" class="axis">688M</text>
+<line x1="682" y1="630.0" x2="1138" y2="630.0" class="grid"/>
+<text x="672" y="634.0" text-anchor="end" class="axis">975M</text>
+<line x1="682" y1="573.0" x2="1138" y2="573.0" class="grid"/>
+<text x="672" y="577.0" text-anchor="end" class="axis">1263M</text>
+<line x1="682" y1="516.0" x2="1138" y2="516.0" class="grid"/>
+<text x="672" y="520.0" text-anchor="end" class="axis">1550M</text>
+<rect x="682" y="516" width="456" height="228" class="frame"/>
+<text x="682.0" y="766" text-anchor="middle" class="axis">1</text>
+<text x="796.0" y="766" text-anchor="middle" class="axis">2</text>
+<text x="910.0" y="766" text-anchor="middle" class="axis">4</text>
+<text x="1024.0" y="766" text-anchor="middle" class="axis">8</text>
+<text x="1138.0" y="766" text-anchor="middle" class="axis">16</text>
+<text x="910" y="791" text-anchor="middle" class="axis-title">Producer / consumer threads (P=C)</text>
+<text x="629" y="630" text-anchor="middle" transform="rotate(-90 629 630)" class="axis-title">Median throughput (M items/s)</text>
+<polyline points="682.0,715.5 796.0,641.7 910.0,551.8 1024.0,597.9 1138.0,602.0" class="off"/>
+<polyline points="682.0,710.3 796.0,629.4 910.0,545.9 1024.0,638.6 1138.0,585.7" class="on"/>
+<circle cx="682.0" cy="715.5" r="5" class="off-dot"><title>Batch off · 1P/1C · 543.7 M items/s</title></circle>
+<circle cx="796.0" cy="641.7" r="5" class="off-dot"><title>Batch off · 2P/2C · 916.2 M items/s</title></circle>
+<circle cx="910.0" cy="551.8" r="5" class="off-dot"><title>Batch off · 4P/4C · 1369.2 M items/s</title></circle>
+<circle cx="1024.0" cy="597.9" r="5" class="off-dot"><title>Batch off · 8P/8C · 1137.1 M items/s</title></circle>
+<circle cx="1138.0" cy="602.0" r="5" class="off-dot"><title>Batch off · 16P/16C · 1116.2 M items/s</title></circle>
+<circle cx="682.0" cy="710.3" r="5" class="on-dot"><title>Batch on · 1P/1C · 569.9 M items/s · +4.8%</title></circle>
+<circle cx="796.0" cy="629.4" r="5" class="on-dot"><title>Batch on · 2P/2C · 978.0 M items/s · +6.7%</title></circle>
+<circle cx="910.0" cy="545.9" r="5" class="on-dot"><title>Batch on · 4P/4C · 1399.0 M items/s · +2.2%</title></circle>
+<circle cx="1024.0" cy="638.6" r="5" class="on-dot"><title>Batch on · 8P/8C · 931.5 M items/s · -18.1%</title></circle>
+<circle cx="1138.0" cy="585.7" r="5" class="on-dot"><title>Batch on · 16P/16C · 1198.3 M items/s · +7.4%</title></circle>
+</svg>
