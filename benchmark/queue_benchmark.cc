@@ -36,6 +36,20 @@ using original_hakle_benchmark_queue =
     hakle::ConcurrentQueue<int, slab_benchmark_allocator,
                            original_hakle_benchmark_traits>;
 
+template <bool ProducerCache, bool ConsumerCache>
+struct cache_ablation_benchmark_traits
+    : hakle::ConcurrentQueueDefaultTraits<int, slab_benchmark_allocator> {
+  static constexpr bool UseImplicitProducerCache = ProducerCache;
+  static constexpr bool UseImplicitConsumerCache = ConsumerCache;
+  static constexpr bool UseDirectProducerTokenDispatch = false;
+};
+
+template <bool ProducerCache, bool ConsumerCache>
+using cache_ablation_benchmark_queue =
+    hakle::ConcurrentQueue<
+        int, slab_benchmark_allocator,
+        cache_ablation_benchmark_traits<ProducerCache, ConsumerCache>>;
+
 struct slab_benchmark_traits
     : hakle::ConcurrentQueueDefaultTraits<int, slab_benchmark_allocator> {
   using Base = hakle::ConcurrentQueueDefaultTraits<int, slab_benchmark_allocator>;
@@ -137,6 +151,33 @@ constexpr std::size_t initial_blocks_for(std::size_t producer_count,
     return producer_count * blocks_per_producer;
   }
 }
+
+template <class Queue> class hakle_cache_ablation_implicit_queue {
+public:
+  hakle_cache_ablation_implicit_queue(std::size_t initial_block_count,
+                                      std::size_t, std::size_t)
+      : queue_(std::piecewise_construct, std::make_tuple(std::size_t{0}),
+               std::make_tuple(initial_block_count), {}) {}
+
+  bool enqueue(std::size_t, int value) { return queue_.Enqueue(value); }
+  bool try_dequeue(std::size_t, int &value) { return queue_.TryDequeue(value); }
+
+private:
+  Queue queue_;
+};
+
+using hakle_implicit_no_caches_queue =
+    hakle_cache_ablation_implicit_queue<
+        cache_ablation_benchmark_queue<false, false>>;
+using hakle_implicit_producer_cache_queue =
+    hakle_cache_ablation_implicit_queue<
+        cache_ablation_benchmark_queue<true, false>>;
+using hakle_implicit_consumer_cache_queue =
+    hakle_cache_ablation_implicit_queue<
+        cache_ablation_benchmark_queue<false, true>>;
+using hakle_implicit_both_caches_queue =
+    hakle_cache_ablation_implicit_queue<
+        cache_ablation_benchmark_queue<true, true>>;
 
 class original_hakle_implicit_queue {
 public:
@@ -741,6 +782,22 @@ void producer_only_arguments(benchmark::internal::Benchmark *benchmark) {
 void BM_HakleImplicitEqualBlocks(benchmark::State &state) {
   run_mpmc<original_hakle_implicit_queue, initial_pool_mode::equal_blocks>(state);
 }
+void BM_HakleImplicitNoCachesEqualBlocks(benchmark::State &state) {
+  run_mpmc<hakle_implicit_no_caches_queue,
+           initial_pool_mode::equal_blocks>(state);
+}
+void BM_HakleImplicitProducerCacheOnlyEqualBlocks(benchmark::State &state) {
+  run_mpmc<hakle_implicit_producer_cache_queue,
+           initial_pool_mode::equal_blocks>(state);
+}
+void BM_HakleImplicitConsumerCacheOnlyEqualBlocks(benchmark::State &state) {
+  run_mpmc<hakle_implicit_consumer_cache_queue,
+           initial_pool_mode::equal_blocks>(state);
+}
+void BM_HakleImplicitBothCachesEqualBlocks(benchmark::State &state) {
+  run_mpmc<hakle_implicit_both_caches_queue,
+           initial_pool_mode::equal_blocks>(state);
+}
 void BM_HakleImplicitZeroInitialPool(benchmark::State &state) {
   run_mpmc<original_hakle_implicit_queue,
            initial_pool_mode::zero_initial_pool>(state);
@@ -840,6 +897,16 @@ void BM_ProducerOnlyHakleImplicitEqualBlocks(benchmark::State &state) {
   run_producer_only<original_hakle_implicit_queue,
                     initial_pool_mode::equal_blocks>(state);
 }
+void BM_ProducerOnlyHakleImplicitNoProducerCacheEqualBlocks(
+    benchmark::State &state) {
+  run_producer_only<hakle_implicit_no_caches_queue,
+                    initial_pool_mode::equal_blocks>(state);
+}
+void BM_ProducerOnlyHakleImplicitProducerCacheEqualBlocks(
+    benchmark::State &state) {
+  run_producer_only<hakle_implicit_producer_cache_queue,
+                    initial_pool_mode::equal_blocks>(state);
+}
 void BM_ProducerOnlyHakleImplicitZeroInitialPool(benchmark::State &state) {
   run_producer_only<original_hakle_implicit_queue,
                     initial_pool_mode::zero_initial_pool>(state);
@@ -910,6 +977,10 @@ void BM_ProducerOnlyMoodycamelTokensZeroInitialPool(benchmark::State &state) {
 }
 
 BENCHMARK(BM_HakleImplicitEqualBlocks)->Apply(mpmc_arguments);
+BENCHMARK(BM_HakleImplicitNoCachesEqualBlocks)->Apply(mpmc_arguments);
+BENCHMARK(BM_HakleImplicitProducerCacheOnlyEqualBlocks)->Apply(mpmc_arguments);
+BENCHMARK(BM_HakleImplicitConsumerCacheOnlyEqualBlocks)->Apply(mpmc_arguments);
+BENCHMARK(BM_HakleImplicitBothCachesEqualBlocks)->Apply(mpmc_arguments);
 BENCHMARK(BM_HakleImplicitZeroInitialPool)->Apply(mpmc_arguments);
 BENCHMARK(BM_HakleTokensEqualBlocks)->Apply(mpmc_arguments);
 BENCHMARK(BM_HakleTokensZeroInitialPool)->Apply(mpmc_arguments);
@@ -941,6 +1012,10 @@ BENCHMARK(BM_HakleOptimizedTokenBulkZeroInitialPool)->Apply(mpmc_arguments);
 BENCHMARK(BM_MoodycamelTokenBulkEqualBlocks)->Apply(mpmc_arguments);
 BENCHMARK(BM_MoodycamelTokenBulkZeroInitialPool)->Apply(mpmc_arguments);
 BENCHMARK(BM_ProducerOnlyHakleImplicitEqualBlocks)->Apply(producer_only_arguments);
+BENCHMARK(BM_ProducerOnlyHakleImplicitNoProducerCacheEqualBlocks)
+    ->Apply(producer_only_arguments);
+BENCHMARK(BM_ProducerOnlyHakleImplicitProducerCacheEqualBlocks)
+    ->Apply(producer_only_arguments);
 BENCHMARK(BM_ProducerOnlyHakleImplicitZeroInitialPool)->Apply(producer_only_arguments);
 BENCHMARK(BM_ProducerOnlyHakleTokensEqualBlocks)->Apply(producer_only_arguments);
 BENCHMARK(BM_ProducerOnlyHakleTokensZeroInitialPool)->Apply(producer_only_arguments);

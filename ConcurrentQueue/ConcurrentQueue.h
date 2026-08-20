@@ -118,6 +118,14 @@ struct UseImplicitConsumerCache : std::true_type {};
 template <class Traits>
 struct UseImplicitConsumerCache<Traits, VoidT<decltype( Traits::UseImplicitConsumerCache )>> : std::bool_constant<Traits::UseImplicitConsumerCache> {};
 
+// Optional per-traits switch for the token-less producer fast path. It avoids
+// looking up the calling thread in ImplicitMap on every implicit enqueue.
+template <class Traits, class = void>
+struct UseImplicitProducerCache : std::true_type {};
+
+template <class Traits>
+struct UseImplicitProducerCache<Traits, VoidT<decltype( Traits::UseImplicitProducerCache )>> : std::bool_constant<Traits::UseImplicitProducerCache> {};
+
 // Optional per-traits switch for ProducerToken operations. Direct dispatch is
 // safe because a ProducerToken always owns an explicit producer; disabling it
 // retains the original generic ProducerListNode dispatch path.
@@ -1415,6 +1423,7 @@ struct ConcurrentQueueDefaultTraits {
     static constexpr std::size_t InitialHashSize          = 32;
     static constexpr std::size_t InitialExplicitQueueSize = 32;
     static constexpr std::size_t InitialImplicitQueueSize = 32;
+    static constexpr bool        UseImplicitProducerCache = true;
     static constexpr bool        UseImplicitConsumerCache = true;
     static constexpr bool        UseDirectProducerTokenDispatch = true;
 
@@ -2214,9 +2223,11 @@ private:
     void RefreshImplicitProducerCacheId() noexcept { ImplicitProducerCacheId = NextImplicitProducerCacheId(); }
 
     ImplicitProducer* GetOrAddImplicitProducer() {
-        ImplicitProducerCache& Cache = LocalImplicitProducerCache();
-        if HAKLE_LIKELY ( Cache.Queue == this && Cache.QueueId == ImplicitProducerCacheId ) {
-            return Cache.Producer;
+        HAKLE_CONSTEXPR_IF( UseImplicitProducerCache<Traits>::value ) {
+            ImplicitProducerCache& Cache = LocalImplicitProducerCache();
+            if HAKLE_LIKELY ( Cache.Queue == this && Cache.QueueId == ImplicitProducerCacheId ) {
+                return Cache.Producer;
+            }
         }
 
         details::thread_id_t thread_id = details::thread_id();
@@ -2229,9 +2240,12 @@ private:
             return nullptr;
         }
 
-        Cache.Queue    = this;
-        Cache.QueueId  = ImplicitProducerCacheId;
-        Cache.Producer = producer;
+        HAKLE_CONSTEXPR_IF( UseImplicitProducerCache<Traits>::value ) {
+            ImplicitProducerCache& Cache = LocalImplicitProducerCache();
+            Cache.Queue                   = this;
+            Cache.QueueId                 = ImplicitProducerCacheId;
+            Cache.Producer                = producer;
+        }
         return producer;
     }
 

@@ -116,6 +116,37 @@ Across all eight fan-in points, the median improvement is **+28.5%**. Custom
 traits can restore the scan-based behavior with
 `UseImplicitConsumerCache = false` when thread-local cache state is undesirable.
 
+### Combined implicit producer and consumer caches
+
+A 2x2 ablation measures the implicit producer TLS lookup cache and the
+token-less consumer-token cache in the same balanced MPMC workload. All four
+variants were compiled into one executable, randomly interleaved for 7
+repetitions, and given the same preallocated block count:
+
+| Scenario | No caches M items/s | Producer cache only | Consumer cache only | Both caches | Both versus none |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1P/1C | 41.05 | 45.92 | 41.39 | 46.40 | +13.0% |
+| 2P/2C | 18.46 | 18.71 | 37.63 | 38.33 | +107.7% |
+| 4P/4C | 16.91 | 17.30 | 89.37 | 91.93 | +443.8% |
+| 8P/8C | 17.02 | 17.28 | 102.81 | 104.43 | +513.5% |
+| 12P/12C | 17.60 | 17.73 | 111.13 | 110.56 | +528.2% |
+| 16P/16C | 18.81 | 18.98 | 112.63 | 117.13 | +522.6% |
+| 20P/20C | 20.69 | 20.67 | 116.93 | 119.32 | +476.7% |
+| 24P/24C | 22.52 | 22.85 | 112.89 | 112.76 | +400.7% |
+
+Across the eight configurations, the producer cache alone improves end-to-end
+MPMC throughput by a median **+1.4%**, the consumer cache alone by **+446.9%**,
+and both caches by **+460.3%**. Once the consumer cache is enabled, adding the
+producer cache contributes a median **+2.0%**. In producer-only measurements,
+where dequeue cannot hide enqueue cost, the producer cache improves the median
+by **+11.1%** (-0.1% to +75.7%). This shows that the producer TLS cache is
+useful, but producer-list scanning on token-less dequeue is the dominant
+bottleneck in balanced MPMC.
+
+The default traits enable both caches. A direct confirmation run compared the
+2x2 "both" traits with the normal default queue and found a median difference
+of +1.5% (-1.2% to +5.3%), consistent with scheduler noise.
+
 ### Fixed scenario: shared sharded manager under a deep burst
 
 `SlabBlockManager<..., 32>` is useful when many implicit producer queues share
@@ -157,6 +188,8 @@ Raw optimization results are available in:
 - [`benchmark/results/windows-msvc-19.44-fan-in-consumer-cache-2026-08-20.json`](benchmark/results/windows-msvc-19.44-fan-in-consumer-cache-2026-08-20.json)
 - [`benchmark/results/windows-msvc-19.44-sharded-manager-burst-2026-08-20.json`](benchmark/results/windows-msvc-19.44-sharded-manager-burst-2026-08-20.json)
 - [`benchmark/results/windows-msvc-19.44-sharded-manager-burst-confirmation-2026-08-20.json`](benchmark/results/windows-msvc-19.44-sharded-manager-burst-confirmation-2026-08-20.json)
+- [`benchmark/results/windows-msvc-19.44-implicit-cache-combination-2026-08-20.json`](benchmark/results/windows-msvc-19.44-implicit-cache-combination-2026-08-20.json)
+- [`benchmark/results/windows-msvc-19.44-implicit-both-caches-default-confirmation-2026-08-20.json`](benchmark/results/windows-msvc-19.44-implicit-both-caches-default-confirmation-2026-08-20.json)
 
 Regenerate the main comparison from a Visual Studio 2022 Developer Command
 Prompt with:
