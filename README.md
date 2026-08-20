@@ -187,19 +187,53 @@ cmake -S . -B build \
 cmake --build build --config Release --target queue_benchmark --parallel
 ```
 
-The older broad reference chart uses a logarithmic vertical axis because bulk
-operations are substantially faster than single-item operations.
+The broad comparison was rerun on 2026-08-20 with the same Windows/MSVC host
+used above. Every point is the median of 7 randomly interleaved repetitions.
+Hakle and moodycamel receive the same number of preallocated blocks, queue
+construction is outside the timed region, and every run validates item count
+and checksum. Boost.Lockfree, oneTBB, and the mutex queue do not expose an
+equivalent block-pool interface, so the equal-block rule applies only to the
+two block-based queues.
+
+The added **Optimized Hakle implicit** curve selects the thread-local consumer
+cache because it reproduced a clear positive result in this broad run:
+
+| Selected path | Versus Original Hakle | Versus moodycamel |
+| --- | ---: | ---: |
+| Implicit scalar, consumer cache | **+762.5%** (+1.3% to +991.6%) | **+814.9%** (+23.2% to +1,028.9%) |
+
+The ranges cover 1P/1C through 24P/24C. The total chart deliberately does not
+label direct `ProducerToken` dispatch as a winning optimization: in this rerun
+its median changes were -0.8% for scalar token operations and -3.4% for
+64-item bulk operations. Those samples remain in the raw JSON. The sharded
+manager is also excluded here because equal preallocation bypasses the
+allocation/recycling pressure that it is designed to improve.
+
+The vertical axis is logarithmic because bulk operations are substantially
+faster than single-item operations.
 
 ![Queue throughput benchmark](docs/benchmark-throughput.svg)
 
 Raw results are available in
-[`benchmark/results/windows-msvc-19.44-2026-07-29.json`](benchmark/results/windows-msvc-19.44-2026-07-29.json).
+[`benchmark/results/windows-msvc-19.44-broad-optimized-2026-08-20.json`](benchmark/results/windows-msvc-19.44-broad-optimized-2026-08-20.json).
+After building `queue_benchmark`, reproduce the measurement with:
+
+```sh
+build/benchmark/bin/queue_benchmark \
+  --benchmark_filter='^(BM_HakleImplicitEqualBlocks|BM_HakleOptimizedImplicitEqualBlocks|BM_MoodycamelImplicitEqualBlocks|BM_HakleTokensEqualBlocks|BM_HakleOptimizedTokensEqualBlocks|BM_MoodycamelTokensEqualBlocks|BM_BoostLockfree|BM_OneTBB|BM_MutexQueue|BM_HakleTokenBulkEqualBlocks|BM_HakleOptimizedTokenBulkEqualBlocks|BM_MoodycamelTokenBulkEqualBlocks)/' \
+  --benchmark_repetitions=7 \
+  --benchmark_enable_random_interleaving=true \
+  --benchmark_display_aggregates_only=true \
+  --benchmark_out=benchmark/results/local-broad-queue-comparison.json \
+  --benchmark_out_format=json
+```
+
 Regenerate the chart with:
 
 ```sh
 python -m pip install matplotlib
 python benchmark/plot_benchmark.py \
-  benchmark/results/windows-msvc-19.44-2026-07-29.json \
+  benchmark/results/local-broad-queue-comparison.json \
   --output docs/benchmark-throughput.svg
 ```
 

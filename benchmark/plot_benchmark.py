@@ -28,18 +28,40 @@ class Series:
 
 
 SERIES = (
-    Series("BM_HakleImplicit", "Hakle implicit", "single", "#0072B2", "o", "-"),
-    Series("BM_HakleTokens", "Hakle token", "single", "#009E73", "s", "-"),
     Series(
-        "BM_MoodycamelImplicit",
-        "Moodycamel implicit",
+        "BM_HakleImplicitEqualBlocks",
+        "Original Hakle implicit",
         "single",
         "#56B4E9",
+        "o",
+        ":",
+    ),
+    Series(
+        "BM_HakleOptimizedImplicitEqualBlocks",
+        "Optimized Hakle implicit",
+        "single",
+        "#0072B2",
+        "o",
+        "-",
+    ),
+    Series(
+        "BM_MoodycamelImplicitEqualBlocks",
+        "Moodycamel implicit",
+        "single",
+        "#4C78A8",
         "^",
         "--",
     ),
     Series(
-        "BM_MoodycamelTokens",
+        "BM_HakleTokensEqualBlocks",
+        "Original Hakle token",
+        "single",
+        "#8BC99B",
+        "s",
+        ":",
+    ),
+    Series(
+        "BM_MoodycamelTokensEqualBlocks",
         "Moodycamel token",
         "single",
         "#E69F00",
@@ -50,15 +72,15 @@ SERIES = (
     Series("BM_OneTBB", "oneTBB", "single", "#CC79A7", "P", "-."),
     Series("BM_MutexQueue", "Mutex queue", "single", "#7F7F7F", "X", ":"),
     Series(
-        "BM_HakleTokenBulk",
-        "Hakle token bulk",
+        "BM_HakleTokenBulkEqualBlocks",
+        "Original Hakle token bulk",
         "bulk",
-        "#332288",
+        "#9C89B8",
         "*",
-        "-",
+        ":",
     ),
     Series(
-        "BM_MoodycamelTokenBulk",
+        "BM_MoodycamelTokenBulkEqualBlocks",
         "Moodycamel token bulk",
         "bulk",
         "#AA4499",
@@ -75,7 +97,9 @@ GRID = "#D0D7DE"
 
 def parse_results(
     path: Path,
-) -> tuple[dict[str, dict[tuple[int, int], float]], dict[str, object]]:
+) -> tuple[
+    dict[str, dict[tuple[int, int], float]], dict[str, object], int
+]:
     with path.open(encoding="utf-8") as stream:
         document = json.load(stream)
 
@@ -84,11 +108,24 @@ def parse_results(
         benchmark: {} for benchmark in known
     }
 
-    for row in document.get("benchmarks", []):
-        if row.get("run_type") == "aggregate":
-            continue
+    rows = document.get("benchmarks", [])
+    median_runs = {
+        row.get("run_name")
+        for row in rows
+        if row.get("run_type") == "aggregate"
+        and row.get("aggregate_name") == "median"
+    }
 
-        name = row.get("name", "")
+    for row in rows:
+        if row.get("run_type") == "aggregate":
+            if row.get("aggregate_name") != "median":
+                continue
+            name = row.get("run_name", row.get("name", ""))
+        else:
+            name = row.get("name", "")
+            if name in median_runs:
+                continue
+
         benchmark = name.split("/", 1)[0]
         match = ARGUMENTS.search(name)
         throughput = row.get("items_per_second")
@@ -98,7 +135,16 @@ def parse_results(
         configuration = (int(match.group(1)), int(match.group(2)))
         results[benchmark][configuration] = float(throughput) / 1_000_000.0
 
-    return results, document.get("context", {})
+    repetitions = max(
+        (
+            int(row.get("repetitions", 1))
+            for row in rows
+            if row.get("run_type") == "aggregate"
+            and row.get("aggregate_name") == "median"
+        ),
+        default=1,
+    )
+    return results, document.get("context", {}), repetitions
 
 
 def validate_results(
@@ -170,9 +216,11 @@ def plot_all_series(
         line.set_gid(f"series-{series.benchmark}")
 
     axis.set_yscale("log")
-    axis.set_ylim(1.5, 1_300)
-    axis.set_yticks([2, 5, 10, 20, 50, 100, 200, 500, 1_000])
-    axis.set_yticklabels(["2", "5", "10", "20", "50", "100", "200", "500", "1,000"])
+    axis.set_ylim(1.5, 2_000)
+    axis.set_yticks([2, 5, 10, 20, 50, 100, 200, 500, 1_000, 2_000])
+    axis.set_yticklabels(
+        ["2", "5", "10", "20", "50", "100", "200", "500", "1,000", "2,000"]
+    )
     axis.set_xticks(
         x_values,
         [f"{producers}P/{consumers}C" for producers, consumers in configurations],
@@ -200,7 +248,7 @@ def inject_accessibility_and_dark_theme(path: Path, title: str) -> None:
     svg_tag_end = svg.index(">", svg.index("<svg"))
     additions = """
  <title id="chart-title">{title}</title>
- <desc id="chart-desc">Each line represents one queue implementation or calling mode. The horizontal axis shows balanced producer and consumer configurations from 1P/1C through 24P/24C. The vertical axis shows throughput in millions of items per second on a logarithmic scale so single-item and bulk operations remain visible together.</desc>
+ <desc id="chart-desc">Each line represents one queue implementation or calling mode, including the original and optimized Hakle paths. The horizontal axis shows balanced producer and consumer configurations from 1P/1C through 24P/24C. The vertical axis shows median throughput in millions of items per second on a logarithmic scale so single-item and bulk operations remain visible together.</desc>
  <style>
  @media (prefers-color-scheme: dark) {
    text { fill: #f0f6fc !important; }
@@ -221,14 +269,17 @@ def inject_accessibility_and_dark_theme(path: Path, title: str) -> None:
 def create_plot(
     input_path: Path, output_path: Path, png_path: Path | None = None
 ) -> None:
-    results, context = parse_results(input_path)
+    results, context, repetitions = parse_results(input_path)
     configurations = validate_results(results)
     logical_cpu_count = context.get("num_cpus")
     build_type = str(context.get("library_build_type", "release")).title()
     configuration = f"Windows · MSVC 19.44 · {build_type}"
     if logical_cpu_count:
         configuration += f" · {logical_cpu_count} logical CPUs"
-    title = f"Concurrent Performance ({configuration})"
+    title = (
+        f"Broad Queue Throughput · Median of {repetitions} Runs "
+        f"({configuration})"
+    )
 
     plt.rcParams.update(
         {
@@ -240,7 +291,7 @@ def create_plot(
         }
     )
 
-    figure, axis = plt.subplots(1, 1, figsize=(12, 6.8))
+    figure, axis = plt.subplots(1, 1, figsize=(13.6, 7.2))
     figure.patch.set_alpha(0)
     figure.suptitle(
         title,
@@ -252,7 +303,7 @@ def create_plot(
     plot_all_series(axis, configurations, results)
     style_axis(axis, 0)
 
-    figure.subplots_adjust(left=0.09, right=0.69, top=0.87, bottom=0.14)
+    figure.subplots_adjust(left=0.08, right=0.68, top=0.87, bottom=0.14)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(
         output_path,
@@ -260,7 +311,7 @@ def create_plot(
         transparent=True,
         metadata={
             "Title": title,
-            "Description": "One line per queue, with names in the right-side legend and a logarithmic throughput axis.",
+            "Description": "Original Hakle, Optimized Hakle, moodycamel, Boost.Lockfree, oneTBB, and mutex queue throughput with a logarithmic axis.",
         },
     )
     inject_accessibility_and_dark_theme(output_path, title)

@@ -118,6 +118,15 @@ struct UseImplicitConsumerCache : std::true_type {};
 template <class Traits>
 struct UseImplicitConsumerCache<Traits, VoidT<decltype( Traits::UseImplicitConsumerCache )>> : std::bool_constant<Traits::UseImplicitConsumerCache> {};
 
+// Optional per-traits switch for ProducerToken operations. Direct dispatch is
+// safe because a ProducerToken always owns an explicit producer; disabling it
+// retains the original generic ProducerListNode dispatch path.
+template <class Traits, class = void>
+struct UseDirectProducerTokenDispatch : std::true_type {};
+
+template <class Traits>
+struct UseDirectProducerTokenDispatch<Traits, VoidT<decltype( Traits::UseDirectProducerTokenDispatch )>> : std::bool_constant<Traits::UseDirectProducerTokenDispatch> {};
+
 struct _QueueTypelessBase {};
 
 // TODO: manager traits
@@ -1407,6 +1416,7 @@ struct ConcurrentQueueDefaultTraits {
     static constexpr std::size_t InitialExplicitQueueSize = 32;
     static constexpr std::size_t InitialImplicitQueueSize = 32;
     static constexpr bool        UseImplicitConsumerCache = true;
+    static constexpr bool        UseDirectProducerTokenDispatch = true;
 
     using AllocatorType = Allocator;
 
@@ -1822,12 +1832,20 @@ public:
 
     template <class U>
     constexpr bool TryDequeueFromProducer( const ProducerToken& Token, U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), T&&> ) {
-        return Token.ProducerNode->GetExplicitProducer()->Dequeue( Element );
+        HAKLE_CONSTEXPR_IF( UseDirectProducerTokenDispatch<Traits>::value ) {
+            return Token.ProducerNode->GetExplicitProducer()->Dequeue( Element );
+        } else {
+            return Token.ProducerNode->ProducerDequeue( Element );
+        }
     }
 
     template <HAKLE_CONCEPT( std::output_iterator<T&&> ) Iterator>
     std::size_t TryDequeueBulkFromProducer( const ProducerToken& Token, Iterator ItemFirst, std::size_t MaxCount ) {
-        return Token.ProducerNode->GetExplicitProducer()->DequeueBulk( ItemFirst, MaxCount );
+        HAKLE_CONSTEXPR_IF( UseDirectProducerTokenDispatch<Traits>::value ) {
+            return Token.ProducerNode->GetExplicitProducer()->DequeueBulk( ItemFirst, MaxCount );
+        } else {
+            return Token.ProducerNode->ProducerDequeueBulk( ItemFirst, MaxCount );
+        }
     }
 
     HAKLE_CPP14_CONSTEXPR std::size_t Size() noexcept {
@@ -1919,7 +1937,11 @@ private:
     template <AllocMode Alloc, class... Args>
     HAKLE_REQUIRES( std::is_constructible_v<T, Args...> )
     constexpr bool InnerEnqueueWithToken( const ProducerToken& Token, Args&&... args ) {
-        return Token.ProducerNode->GetExplicitProducer()->template Enqueue<Alloc>( std::forward<Args>( args )... );
+        HAKLE_CONSTEXPR_IF( UseDirectProducerTokenDispatch<Traits>::value ) {
+            return Token.ProducerNode->GetExplicitProducer()->template Enqueue<Alloc>( std::forward<Args>( args )... );
+        } else {
+            return Token.ProducerNode->template ProducerEnqueue<Alloc>( std::forward<Args>( args )... );
+        }
     }
 
     template <AllocMode Alloc, class... Args>
@@ -1932,7 +1954,11 @@ private:
     template <AllocMode Alloc, HAKLE_CONCEPT( std::input_iterator ) Iterator>
     HAKLE_REQUIRES( requires( Iterator Item ) { T( *Item ); } )
     constexpr bool InnerEnqueueBulk( const ProducerToken& Token, Iterator ItermFirst, std::size_t Count ) {
-        return Token.ProducerNode->GetExplicitProducer()->template EnqueueBulk<Alloc>( ItermFirst, Count );
+        HAKLE_CONSTEXPR_IF( UseDirectProducerTokenDispatch<Traits>::value ) {
+            return Token.ProducerNode->GetExplicitProducer()->template EnqueueBulk<Alloc>( ItermFirst, Count );
+        } else {
+            return Token.ProducerNode->template ProducerEnqueueBulk<Alloc>( ItermFirst, Count );
+        }
     }
 
     template <AllocMode Alloc, HAKLE_CONCEPT( std::input_iterator ) Iterator>
