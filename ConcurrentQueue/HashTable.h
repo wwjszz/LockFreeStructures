@@ -309,8 +309,8 @@ private:
                 }
                 else {
                     std::size_t NewCapacity = CurrentMainHash->Capacity << 1;
-                    while ( NewCount >= NewCapacity >> 1 ) {
-                        NewCount <<= 1;
+                    while ( NewCount >= ( NewCapacity >> 1 ) ) {
+                        NewCapacity <<= 1;
                     }
                     HashNode* NewHash = CreateNewHashNode( NewCapacity );
                     if ( NewHash == nullptr ) {
