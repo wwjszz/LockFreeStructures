@@ -5,6 +5,7 @@
 #ifndef BLOCKMANAGER_H
 #define BLOCKMANAGER_H
 
+#include <algorithm>
 #include <atomic>
 #include <concepts>
 #include <cstddef>
@@ -68,6 +69,27 @@ concept CheckBlockManager = IsBlock<BLOCK_TYPE> && std::same_as<BLOCK_TYPE, type
 
 // TODO: position?
 enum class AllocMode { CanAlloc, CannotAlloc };
+
+// Optional extension returned by block managers that can reserve more than one
+// block at a time. Blocks are linked through Block::Next and Count is the exact
+// number of nodes in the chain.
+template <class BLOCK_TYPE>
+struct BlockBatch {
+    BLOCK_TYPE* First{ nullptr };
+    std::size_t Count{ 0 };
+
+    HAKLE_NODISCARD constexpr explicit operator bool() const noexcept { return First != nullptr; }
+};
+
+template <class BLOCK_MANAGER_TYPE, class = void>
+struct HasRequisitionBlocks : std::false_type {};
+
+template <class BLOCK_MANAGER_TYPE>
+struct HasRequisitionBlocks<
+    BLOCK_MANAGER_TYPE,
+    std::void_t<decltype( std::declval<BLOCK_MANAGER_TYPE&>().RequisitionBlocks( std::declval<std::size_t>(), std::declval<AllocMode>() ) )>>
+    : std::is_same<decltype( std::declval<BLOCK_MANAGER_TYPE&>().RequisitionBlocks( std::declval<std::size_t>(), std::declval<AllocMode>() ) ),
+                   BlockBatch<typename BLOCK_MANAGER_TYPE::BlockType>> {};
 
 struct MemoryBase {
     bool         HasOwner{ false };
@@ -350,6 +372,27 @@ public:
         return CurrentIndex < Size() ? ( Head + CurrentIndex ) : nullptr;
     }
 
+    HAKLE_CPP14_CONSTEXPR BlockBatch<BLOCK_TYPE> GetBlocks( std::size_t MaxCount ) noexcept {
+        // Match GetBlock's exhausted-pool fast path: an empty or exhausted pool
+        // must not turn every batch request into a contended fetch_add.
+        if ( MaxCount == 0 || Index.load( std::memory_order_relaxed ) >= Size() ) {
+            return {};
+        }
+
+        const std::size_t CurrentIndex = Index.fetch_add( MaxCount, std::memory_order_relaxed );
+        if ( CurrentIndex >= Size() ) {
+            return {};
+        }
+
+        const std::size_t Count = std::min( MaxCount, Size() - CurrentIndex );
+        BLOCK_TYPE* const First = Head + CurrentIndex;
+        for ( std::size_t Offset = 0; Offset + 1 < Count; ++Offset ) {
+            First[ Offset ].Next = First + Offset + 1;
+        }
+        First[ Count - 1 ].Next = nullptr;
+        return { First, Count };
+    }
+
 private:
     HAKLE_CPP14_CONSTEXPR AllocatorType& Allocator() noexcept { return AllocatorPair.Second(); }
     constexpr const AllocatorType&       Allocator() const noexcept { return AllocatorPair.Second(); }
@@ -477,6 +520,46 @@ public:
             BlockAllocatorTraits::Construct( this->Allocator(), NewBlock );
             return NewBlock;
         }
+    }
+
+    HAKLE_CPP14_CONSTEXPR BlockBatch<BlockType> RequisitionBlocks( std::size_t MaxCount, AllocMode Mode ) {
+        BlockBatch<BlockType> Batch = Pool.GetBlocks( MaxCount );
+        if ( Batch || MaxCount == 0 ) {
+            return Batch;
+        }
+
+        BlockType* Last = nullptr;
+        while ( Batch.Count < MaxCount ) {
+            BlockType* Block = List.TryGet();
+            if ( Block == nullptr ) {
+                break;
+            }
+            Block->Next = nullptr;
+            if ( Last == nullptr ) {
+                Batch.First = Block;
+            }
+            else {
+                Last->Next = Block;
+            }
+            Last = Block;
+            ++Batch.Count;
+        }
+        if ( Batch ) {
+            return Batch;
+        }
+
+        if ( Mode == AllocMode::CannotAlloc ) {
+            return {};
+        }
+
+        BlockType* NewBlock = BlockAllocatorTraits::Allocate( this->Allocator() );
+        HAKLE_TRY { BlockAllocatorTraits::Construct( this->Allocator(), NewBlock ); }
+        HAKLE_CATCH( ... ) {
+            BlockAllocatorTraits::Deallocate( this->Allocator(), NewBlock );
+            HAKLE_RETHROW;
+        }
+        NewBlock->Next = nullptr;
+        return { NewBlock, 1 };
     }
 
     HAKLE_CPP14_CONSTEXPR void ReturnBlock( BlockType* InBlock ) override { List.Add( InBlock ); }
@@ -687,6 +770,72 @@ public:
         return SetRecycleShard( AllocateSlab( Shard ), RecycleShardIndex );
     }
 
+    BlockBatch<BlockType> RequisitionBlocks( std::size_t MaxCount, AllocMode Mode ) {
+        if ( MaxCount == 0 ) {
+            return {};
+        }
+
+        BlockBatch<BlockType> Batch = Pool.GetBlocks( MaxCount );
+        if ( Batch ) {
+            SetBatchRecycleShardFromAddress( Batch );
+            return Batch;
+        }
+
+        const std::size_t ShardIndex = GetThreadShardIndex();
+        const std::size_t RecycleShardIndex = ShardIndex % RecycleShardCount;
+        SlabShard& Shard = Shards[ ShardIndex ];
+
+        if ( ( Batch = TryGetRecycledBlocksFromShard( RecycleShardIndex, RecycleShardIndex, MaxCount ) ) ) {
+            return Batch;
+        }
+
+        if ( ( Batch = TryGetFreshBlocks( Shard, MaxCount ) ) ) {
+            SetBatchRecycleShard( Batch, RecycleShardIndex );
+            return Batch;
+        }
+
+        if ( BlockType* Block = TryGetRecycledBlockFromOtherShard( RecycleShardIndex ); Block != nullptr ) {
+            Block->Next = nullptr;
+            return { SetRecycleShard( Block, RecycleShardIndex ), 1 };
+        }
+
+        if ( Mode == AllocMode::CannotAlloc ) {
+            for ( std::size_t Offset = 1; Offset < ShardCount; ++Offset ) {
+                if ( ( Batch = TryGetFreshBlocks( Shards[ ( ShardIndex + Offset ) % ShardCount ], MaxCount ) ) ) {
+                    SetBatchRecycleShard( Batch, RecycleShardIndex );
+                    return Batch;
+                }
+            }
+            return {};
+        }
+
+        std::lock_guard<std::mutex> Lock( Shard.SlowPathMutex );
+        if ( ( Batch = TryGetRecycledBlocksFromShard( RecycleShardIndex, RecycleShardIndex, MaxCount ) ) ) {
+            return Batch;
+        }
+        if ( ( Batch = TryGetFreshBlocks( Shard, MaxCount ) ) ) {
+            SetBatchRecycleShard( Batch, RecycleShardIndex );
+            return Batch;
+        }
+        if ( BlockType* Block = TryGetRecycledBlockFromOtherShard( RecycleShardIndex ); Block != nullptr ) {
+            Block->Next = nullptr;
+            return { SetRecycleShard( Block, RecycleShardIndex ), 1 };
+        }
+
+        BlockType* First = SetRecycleShard( AllocateSlab( Shard ), RecycleShardIndex );
+        First->Next = nullptr;
+        Batch = { First, 1 };
+        if ( MaxCount > 1 ) {
+            BlockBatch<BlockType> Rest = TryGetFreshBlocks( Shard, MaxCount - 1 );
+            if ( Rest ) {
+                SetBatchRecycleShard( Rest, RecycleShardIndex );
+                First->Next = Rest.First;
+                Batch.Count += Rest.Count;
+            }
+        }
+        return Batch;
+    }
+
     void ReturnBlock( BlockType* InBlock ) override { Shards[ InBlock->RecycleShard ].RecycledBlocks.Add( InBlock ); }
 
     void ReturnBlocks( BlockType* InBlock ) override {
@@ -781,6 +930,39 @@ private:
         return nullptr;
     }
 
+    static BlockBatch<BlockType> TryGetFreshBlocks( SlabShard& Shard, std::size_t MaxCount ) noexcept {
+        if ( MaxCount == 0 ) {
+            return {};
+        }
+
+        BlockType* Current = Shard.FreshBlocks.load( std::memory_order_acquire );
+        while ( Current != nullptr ) {
+            BlockType* Last = Current;
+            std::size_t Count = 1;
+            while ( Count < MaxCount ) {
+                BlockType* Next = Last->FreeListNext.load( std::memory_order_relaxed );
+                if ( Next == nullptr ) {
+                    break;
+                }
+                Last = Next;
+                ++Count;
+            }
+
+            BlockType* AfterLast = Last->FreeListNext.load( std::memory_order_relaxed );
+            if ( Shard.FreshBlocks.compare_exchange_weak( Current, AfterLast, std::memory_order_acquire, std::memory_order_relaxed ) ) {
+                BlockType* Block = Current;
+                for ( std::size_t Index = 1; Index < Count; ++Index ) {
+                    BlockType* Next = Block->FreeListNext.load( std::memory_order_relaxed );
+                    Block->Next = Next;
+                    Block = Next;
+                }
+                Block->Next = nullptr;
+                return { Current, Count };
+            }
+        }
+        return {};
+    }
+
     BlockType* TryGetRecycledBlockFromOtherShard( std::size_t ShardIndex ) noexcept {
         for ( std::size_t Offset = 1; Offset < RecycleShardCount; ++Offset ) {
             if ( BlockType* Block = Shards[ ( ShardIndex + Offset ) % RecycleShardCount ].RecycledBlocks.TryGet(); Block != nullptr ) {
@@ -790,9 +972,43 @@ private:
         return nullptr;
     }
 
+    BlockBatch<BlockType> TryGetRecycledBlocksFromShard( std::size_t SourceShardIndex, std::size_t RecycleShardIndex, std::size_t MaxCount ) noexcept {
+        BlockBatch<BlockType> Batch{};
+        BlockType* Last = nullptr;
+        while ( Batch.Count < MaxCount ) {
+            BlockType* Block = Shards[ SourceShardIndex ].RecycledBlocks.TryGet();
+            if ( Block == nullptr ) {
+                break;
+            }
+            SetRecycleShard( Block, RecycleShardIndex );
+            Block->Next = nullptr;
+            if ( Last == nullptr ) {
+                Batch.First = Block;
+            }
+            else {
+                Last->Next = Block;
+            }
+            Last = Block;
+            ++Batch.Count;
+        }
+        return Batch;
+    }
+
     static BlockType* SetRecycleShard( BlockType* InBlock, std::size_t ShardIndex ) noexcept {
         InBlock->RecycleShard = static_cast<std::uint8_t>( ShardIndex );
         return InBlock;
+    }
+
+    static void SetBatchRecycleShard( const BlockBatch<BlockType>& Batch, std::size_t ShardIndex ) noexcept {
+        for ( BlockType* Block = Batch.First; Block != nullptr; Block = Block->Next ) {
+            SetRecycleShard( Block, ShardIndex );
+        }
+    }
+
+    static void SetBatchRecycleShardFromAddress( const BlockBatch<BlockType>& Batch ) noexcept {
+        for ( BlockType* Block = Batch.First; Block != nullptr; Block = Block->Next ) {
+            SetRecycleShard( Block, GetInitialRecycleShardIndex( Block ) );
+        }
     }
 
     // Initial-pool blocks have not passed through a producer shard. Dividing by

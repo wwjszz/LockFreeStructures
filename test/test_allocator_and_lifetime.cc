@@ -554,6 +554,80 @@ void test_empty_slow_queue_reclaims_partial_dynamic_tail_block() {
         counters->deallocation_calls.load(std::memory_order_relaxed));
 }
 
+void test_hakle_block_manager_requisitions_partial_batches() {
+  using block_type = hakle::HakleCounterBlock<int, 32>;
+  hakle::HakleBlockManager<block_type> manager(5);
+
+  const auto first =
+      manager.RequisitionBlocks(3, hakle::AllocMode::CannotAlloc);
+  CHECK(first.Count == 3);
+  std::size_t first_chain_count = 0;
+  for (block_type *block = first.First; block != nullptr; block = block->Next) {
+    ++first_chain_count;
+  }
+  CHECK(first_chain_count == first.Count);
+
+  const auto second =
+      manager.RequisitionBlocks(3, hakle::AllocMode::CannotAlloc);
+  CHECK(second.Count == 2);
+  std::size_t second_chain_count = 0;
+  for (block_type *block = second.First; block != nullptr; block = block->Next) {
+    ++second_chain_count;
+  }
+  CHECK(second_chain_count == second.Count);
+
+  const auto exhausted =
+      manager.RequisitionBlocks(1, hakle::AllocMode::CannotAlloc);
+  CHECK(!exhausted);
+  CHECK(exhausted.Count == 0);
+
+  manager.ReturnBlocks(first.First);
+  manager.ReturnBlocks(second.First);
+  const auto recycled =
+      manager.RequisitionBlocks(5, hakle::AllocMode::CannotAlloc);
+  CHECK(recycled.Count == 5);
+  manager.ReturnBlocks(recycled.First);
+}
+
+void test_slab_block_manager_requisitions_fresh_chain_in_batches() {
+  using block_type = hakle::HakleCounterBlock<int, 32>;
+  using manager_type =
+      hakle::SlabBlockManager<block_type, hakle::HakleAllocator<block_type>, 8>;
+  manager_type manager(0);
+
+  const auto first =
+      manager.RequisitionBlocks(6, hakle::AllocMode::CanAlloc);
+  CHECK(first.Count == 6);
+  CHECK(manager.GetDynamicSlabCount() == 1);
+  std::size_t first_chain_count = 0;
+  for (block_type *block = first.First; block != nullptr; block = block->Next) {
+    ++first_chain_count;
+  }
+  CHECK(first_chain_count == first.Count);
+
+  const auto second =
+      manager.RequisitionBlocks(6, hakle::AllocMode::CannotAlloc);
+  CHECK(second.Count == 2);
+  std::size_t second_chain_count = 0;
+  for (block_type *block = second.First; block != nullptr; block = block->Next) {
+    ++second_chain_count;
+  }
+  CHECK(second_chain_count == second.Count);
+
+  manager.ReturnBlocks(first.First);
+  manager.ReturnBlocks(second.First);
+
+  const auto recycled =
+      manager.RequisitionBlocks(6, hakle::AllocMode::CannotAlloc);
+  CHECK(recycled.Count == 6);
+  std::size_t recycled_chain_count = 0;
+  for (block_type *block = recycled.First; block != nullptr; block = block->Next) {
+    ++recycled_chain_count;
+  }
+  CHECK(recycled_chain_count == recycled.Count);
+  manager.ReturnBlocks(recycled.First);
+}
+
 void test_slab_block_manager_allocates_and_reuses_slabs() {
   const auto counters = shared_allocation_counters();
   counters->reset();
@@ -985,6 +1059,10 @@ int main() {
              test_concurrent_free_list_reclaims_every_node);
   runner.run("empty slow queue reclaims a partial dynamic tail block",
              test_empty_slow_queue_reclaims_partial_dynamic_tail_block);
+  runner.run("Hakle block manager partial batch requisition",
+             test_hakle_block_manager_requisitions_partial_batches);
+  runner.run("Slab block manager fresh-chain batch requisition",
+             test_slab_block_manager_requisitions_fresh_chain_in_batches);
   runner.run("slab block manager allocation and reuse",
              test_slab_block_manager_allocates_and_reuses_slabs);
   runner.run("slab block manager move ownership",

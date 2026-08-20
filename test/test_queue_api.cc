@@ -48,6 +48,123 @@ private:
   bool available_{true};
 };
 
+class batch_counter_block_manager {
+public:
+  static constexpr std::size_t BlockSize = 32;
+  using BlockType = hakle::HakleFlagsBlock<int, BlockSize>;
+  using ValueType = int;
+  using AllocMode = hakle::AllocMode;
+
+  batch_counter_block_manager() { available_.fill(true); }
+
+  BlockType *RequisitionBlock(AllocMode) noexcept {
+    ++scalar_requisition_calls;
+    return take_one();
+  }
+
+  hakle::BlockBatch<BlockType> RequisitionBlocks(std::size_t max_count,
+                                                  AllocMode) noexcept {
+    ++batch_requisition_calls;
+    hakle::BlockBatch<BlockType> batch{};
+    BlockType *last = nullptr;
+    for (std::size_t index = 0;
+         index != blocks_.size() && batch.Count != max_count; ++index) {
+      if (!available_[index]) {
+        continue;
+      }
+      available_[index] = false;
+      BlockType *block = &blocks_[index];
+      block->Next = nullptr;
+      if (last == nullptr) {
+        batch.First = block;
+      } else {
+        last->Next = block;
+      }
+      last = block;
+      ++batch.Count;
+    }
+    return batch;
+  }
+
+  void ReturnBlock(BlockType *block) noexcept {
+    const auto index = static_cast<std::size_t>(block - blocks_.data());
+    available_[index] = true;
+    ++returned_blocks;
+  }
+
+  void ReturnBlocks(BlockType *block) noexcept {
+    while (block != nullptr) {
+      BlockType *next = block->Next;
+      block->Next = nullptr;
+      ReturnBlock(block);
+      block = next;
+    }
+  }
+
+  std::size_t available_blocks() const noexcept {
+    return static_cast<std::size_t>(
+        std::count(available_.begin(), available_.end(), true));
+  }
+
+  std::size_t scalar_requisition_calls{0};
+  std::size_t batch_requisition_calls{0};
+  std::size_t returned_blocks{0};
+
+private:
+  BlockType *take_one() noexcept {
+    for (std::size_t index = 0; index != blocks_.size(); ++index) {
+      if (available_[index]) {
+        available_[index] = false;
+        return &blocks_[index];
+      }
+    }
+    return nullptr;
+  }
+
+  std::array<BlockType, 8> blocks_{};
+  std::array<bool, 8> available_{};
+};
+
+class scalar_counter_block_manager {
+public:
+  static constexpr std::size_t BlockSize = 32;
+  using BlockType = hakle::HakleCounterBlock<int, BlockSize>;
+  using ValueType = int;
+  using AllocMode = hakle::AllocMode;
+
+  scalar_counter_block_manager() { available_.fill(true); }
+
+  BlockType *RequisitionBlock(AllocMode) noexcept {
+    ++requisition_calls;
+    for (std::size_t index = 0; index != blocks_.size(); ++index) {
+      if (available_[index]) {
+        available_[index] = false;
+        return &blocks_[index];
+      }
+    }
+    return nullptr;
+  }
+
+  void ReturnBlock(BlockType *block) noexcept {
+    const auto index = static_cast<std::size_t>(block - blocks_.data());
+    available_[index] = true;
+  }
+
+  void ReturnBlocks(BlockType *block) noexcept {
+    while (block != nullptr) {
+      BlockType *next = block->Next;
+      ReturnBlock(block);
+      block = next;
+    }
+  }
+
+  std::size_t requisition_calls{0};
+
+private:
+  std::array<BlockType, 4> blocks_{};
+  std::array<bool, 4> available_{};
+};
+
 static_assert(std::movable<queue_type>);
 static_assert(!std::copy_constructible<queue_type>);
 static_assert(!std::is_copy_assignable_v<queue_type>);
@@ -156,6 +273,123 @@ void test_fast_queue_bulk_failure_keeps_preallocated_block_reusable() {
   int output = 0;
   CHECK(queue.Dequeue(output));
   CHECK(output == 42);
+}
+
+void test_fast_queue_bulk_requisition_uses_batch_extension() {
+  using manager_type = batch_counter_block_manager;
+  using fast_queue_type =
+      hakle::FastQueue<int, manager_type::BlockSize,
+                       hakle::HakleAllocator<int>, manager_type::BlockType,
+                       manager_type, true>;
+
+  manager_type manager;
+  fast_queue_type queue(4, &manager);
+  std::array<int, 64> input{};
+  std::array<int, 64> output{};
+  std::iota(input.begin(), input.end(), 3000);
+
+  CHECK(queue.EnqueueBulk<hakle::AllocMode::CannotAlloc>(input.begin(),
+                                                          input.size()));
+  CHECK(manager.batch_requisition_calls == 1);
+  CHECK(manager.scalar_requisition_calls == 0);
+  CHECK(queue.DequeueBulk(output.begin(), output.size()) == output.size());
+  CHECK(output == input);
+}
+
+void test_fast_queue_batch_mode_falls_back_to_scalar_manager() {
+  using manager_type = scalar_counter_block_manager;
+  using fast_queue_type =
+      hakle::FastQueue<int, manager_type::BlockSize,
+                       hakle::HakleAllocator<int>, manager_type::BlockType,
+                       manager_type, true>;
+
+  manager_type manager;
+  fast_queue_type queue(4, &manager);
+  std::array<int, 64> input{};
+  std::array<int, 64> output{};
+  std::iota(input.begin(), input.end(), 4000);
+
+  CHECK(queue.EnqueueBulk<hakle::AllocMode::CannotAlloc>(input.begin(),
+                                                          input.size()));
+  CHECK(manager.requisition_calls == 2);
+  CHECK(queue.DequeueBulk(output.begin(), output.size()) == output.size());
+  CHECK(output == input);
+}
+
+void test_fast_queue_batch_failure_returns_unused_reservation() {
+  using manager_type = batch_counter_block_manager;
+  using fast_queue_type =
+      hakle::FastQueue<int, manager_type::BlockSize,
+                       hakle::HakleAllocator<int>, manager_type::BlockType,
+                       manager_type, true>;
+
+  manager_type manager;
+  fast_queue_type queue(2, &manager);
+  std::array<int, 160> too_many{};
+  std::iota(too_many.begin(), too_many.end(), 5000);
+
+  CHECK(!queue.EnqueueBulk<hakle::AllocMode::CannotAlloc>(
+      too_many.begin(), too_many.size()));
+  CHECK(queue.Size() == 0);
+  CHECK(manager.batch_requisition_calls == 1);
+  CHECK(manager.returned_blocks == 1);
+  CHECK(manager.available_blocks() == 4);
+
+  std::array<int, 128> input{};
+  std::array<int, 128> output{};
+  std::iota(input.begin(), input.end(), 6000);
+  CHECK(queue.EnqueueBulk<hakle::AllocMode::CannotAlloc>(input.begin(),
+                                                          input.size()));
+  CHECK(manager.batch_requisition_calls == 1);
+  CHECK(queue.DequeueBulk(output.begin(), output.size()) == output.size());
+  CHECK(output == input);
+}
+
+void test_slow_queue_bulk_failure_returns_entire_batch() {
+  using block_type = hakle::HakleCounterBlock<int, 32>;
+  using manager_type = hakle::HakleBlockManager<block_type>;
+  using slow_queue_type =
+      hakle::SlowQueue<int, 32, hakle::HakleAllocator<int>, block_type,
+                       manager_type>;
+
+  manager_type manager(2);
+  slow_queue_type queue(2, &manager);
+  std::array<int, 65> too_many{};
+  std::iota(too_many.begin(), too_many.end(), 100);
+
+  CHECK(!queue.EnqueueBulk<hakle::AllocMode::CannotAlloc>(
+      too_many.begin(), too_many.size()));
+  CHECK(queue.Size() == 0);
+
+  std::array<int, 64> input{};
+  std::array<int, 64> output{};
+  std::iota(input.begin(), input.end(), 1000);
+  CHECK(queue.EnqueueBulk<hakle::AllocMode::CannotAlloc>(input.begin(),
+                                                         input.size()));
+  CHECK(queue.DequeueBulk(output.begin(), output.size()) == output.size());
+  CHECK(output == input);
+}
+
+void test_slow_queue_falls_back_for_scalar_custom_manager() {
+  using manager_type = scalar_counter_block_manager;
+  using slow_queue_type =
+      hakle::SlowQueue<int, manager_type::BlockSize,
+                       hakle::HakleAllocator<int>, manager_type::BlockType,
+                       manager_type>;
+
+  static_assert(!hakle::HasRequisitionBlocks<manager_type>::value);
+
+  manager_type manager;
+  slow_queue_type queue(2, &manager);
+  std::array<int, 64> input{};
+  std::array<int, 64> output{};
+  std::iota(input.begin(), input.end(), 2000);
+
+  CHECK(queue.EnqueueBulk<hakle::AllocMode::CannotAlloc>(input.begin(),
+                                                         input.size()));
+  CHECK(manager.requisition_calls == 2);
+  CHECK(queue.DequeueBulk(output.begin(), output.size()) == output.size());
+  CHECK(output == input);
 }
 
 void test_word_flags_policy_fast_queue() {
@@ -285,6 +519,16 @@ int main() {
   runner.run("zero-length bulk enqueue", test_zero_length_bulk_enqueue_is_a_no_op);
   runner.run("FastQueue bulk failure rollback",
              test_fast_queue_bulk_failure_keeps_preallocated_block_reusable);
+  runner.run("FastQueue batch requisition",
+             test_fast_queue_bulk_requisition_uses_batch_extension);
+  runner.run("FastQueue batch scalar fallback",
+             test_fast_queue_batch_mode_falls_back_to_scalar_manager);
+  runner.run("FastQueue batch failure returns unused reservation",
+             test_fast_queue_batch_failure_returns_unused_reservation);
+  runner.run("SlowQueue batch failure rollback",
+             test_slow_queue_bulk_failure_returns_entire_batch);
+  runner.run("SlowQueue scalar custom manager fallback",
+             test_slow_queue_falls_back_for_scalar_custom_manager);
   runner.run( "WordFlags policy FastQueue", test_word_flags_policy_fast_queue );
   runner.run("token bulk enqueue and dequeue", test_bulk_operations_with_producer_token);
   runner.run("move-only values", test_move_only_values);

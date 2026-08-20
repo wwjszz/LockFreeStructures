@@ -50,6 +50,19 @@ using cache_ablation_benchmark_queue =
         int, slab_benchmark_allocator,
         cache_ablation_benchmark_traits<ProducerCache, ConsumerCache>>;
 
+template <bool BulkRequisition>
+struct block_batch_ablation_benchmark_traits
+    : hakle::ConcurrentQueueDefaultTraits<int, slab_benchmark_allocator> {
+  static constexpr bool UseBulkBlockRequisition = BulkRequisition;
+  static constexpr bool UseFastQueueBulkBlockRequisition = BulkRequisition;
+};
+
+template <bool BulkRequisition>
+using block_batch_ablation_benchmark_queue =
+    hakle::ConcurrentQueue<
+        int, slab_benchmark_allocator,
+        block_batch_ablation_benchmark_traits<BulkRequisition>>;
+
 struct slab_benchmark_traits
     : hakle::ConcurrentQueueDefaultTraits<int, slab_benchmark_allocator> {
   using Base = hakle::ConcurrentQueueDefaultTraits<int, slab_benchmark_allocator>;
@@ -89,6 +102,18 @@ struct slab_benchmark_traits
 
 using slab_benchmark_queue =
     hakle::ConcurrentQueue<int, slab_benchmark_allocator, slab_benchmark_traits>;
+
+template <bool BulkRequisition>
+struct slab_batch_ablation_benchmark_traits : slab_benchmark_traits {
+  static constexpr bool UseBulkBlockRequisition = BulkRequisition;
+  static constexpr bool UseFastQueueBulkBlockRequisition = BulkRequisition;
+};
+
+template <bool BulkRequisition>
+using slab_batch_ablation_benchmark_queue =
+    hakle::ConcurrentQueue<
+        int, slab_benchmark_allocator,
+        slab_batch_ablation_benchmark_traits<BulkRequisition>>;
 
 template <std::size_t ArenaBytes>
 struct arena_benchmark_traits
@@ -165,6 +190,79 @@ public:
 private:
   Queue queue_;
 };
+
+template <class Queue> class hakle_batch_ablation_implicit_queue {
+public:
+  hakle_batch_ablation_implicit_queue(std::size_t initial_block_count,
+                                      std::size_t, std::size_t)
+      : queue_(std::piecewise_construct, std::make_tuple(std::size_t{0}),
+               std::make_tuple(initial_block_count), {}) {}
+
+  bool enqueue_bulk(std::size_t, const int *values, std::size_t count) {
+    return queue_.EnqueueBulk(values, count);
+  }
+
+  std::size_t try_dequeue_bulk(std::size_t, int *values,
+                               std::size_t count) {
+    return queue_.TryDequeueBulk(values, count);
+  }
+
+private:
+  Queue queue_;
+};
+
+template <class Queue> class hakle_batch_ablation_token_queue {
+public:
+  hakle_batch_ablation_token_queue(std::size_t initial_block_count,
+                                   std::size_t producer_count,
+                                   std::size_t consumer_count)
+      : queue_(std::piecewise_construct, std::make_tuple(initial_block_count),
+               std::make_tuple(std::size_t{0}), {}) {
+    producers_.reserve(producer_count);
+    for (std::size_t index = 0; index < producer_count; ++index) {
+      producers_.emplace_back(queue_.GetProducerToken());
+    }
+    consumers_.reserve(consumer_count);
+    for (std::size_t index = 0; index < consumer_count; ++index) {
+      consumers_.emplace_back(queue_.GetConsumerToken());
+    }
+  }
+
+  bool enqueue_bulk(std::size_t producer, const int *values,
+                    std::size_t count) {
+    return queue_.EnqueueBulk(producers_[producer], values, count);
+  }
+
+  std::size_t try_dequeue_bulk(std::size_t consumer, int *values,
+                               std::size_t count) {
+    return queue_.TryDequeueBulk(consumers_[consumer], values, count);
+  }
+
+private:
+  Queue queue_;
+  std::vector<typename Queue::ProducerToken> producers_;
+  std::vector<typename Queue::ConsumerToken> consumers_;
+};
+
+using hakle_block_batch_off_queue = hakle_batch_ablation_implicit_queue<
+    block_batch_ablation_benchmark_queue<false>>;
+using hakle_block_batch_on_queue = hakle_batch_ablation_implicit_queue<
+    block_batch_ablation_benchmark_queue<true>>;
+using hakle_slab_block_batch_off_queue = hakle_batch_ablation_implicit_queue<
+    slab_batch_ablation_benchmark_queue<false>>;
+using hakle_slab_block_batch_on_queue = hakle_batch_ablation_implicit_queue<
+    slab_batch_ablation_benchmark_queue<true>>;
+
+using hakle_fast_block_batch_off_queue = hakle_batch_ablation_token_queue<
+    block_batch_ablation_benchmark_queue<false>>;
+using hakle_fast_block_batch_on_queue = hakle_batch_ablation_token_queue<
+    block_batch_ablation_benchmark_queue<true>>;
+using hakle_slab_fast_block_batch_off_queue =
+    hakle_batch_ablation_token_queue<
+        slab_batch_ablation_benchmark_queue<false>>;
+using hakle_slab_fast_block_batch_on_queue =
+    hakle_batch_ablation_token_queue<
+        slab_batch_ablation_benchmark_queue<true>>;
 
 using hakle_implicit_no_caches_queue =
     hakle_cache_ablation_implicit_queue<
@@ -561,9 +659,9 @@ void run_mpmc(benchmark::State &state) {
   state.counters["RequestedInitialBlocks"] = static_cast<double>(initial_block_count);
 }
 
-template <typename Queue, initial_pool_mode PoolMode = initial_pool_mode::equal_blocks>
+template <typename Queue, initial_pool_mode PoolMode = initial_pool_mode::equal_blocks,
+          std::size_t BulkSize = 64>
 void run_bulk_mpmc(benchmark::State &state) {
-  constexpr std::size_t bulk_size = 64;
   const auto producer_count = static_cast<std::size_t>(state.range(0));
   const auto consumer_count = static_cast<std::size_t>(state.range(1));
   const auto items_per_producer = static_cast<std::size_t>(state.range(2));
@@ -587,7 +685,7 @@ void run_bulk_mpmc(benchmark::State &state) {
       consumers.reserve(consumer_count);
       for (std::size_t consumer = 0; consumer < consumer_count; ++consumer) {
         consumers.emplace_back([&, consumer] {
-          std::array<int, bulk_size> values{};
+          std::array<int, BulkSize> values{};
           ready_gate.count_down();
           start_gate.wait();
           std::size_t local_count = 0;
@@ -621,12 +719,12 @@ void run_bulk_mpmc(benchmark::State &state) {
       producers.reserve(producer_count);
       for (std::size_t producer = 0; producer < producer_count; ++producer) {
         producers.emplace_back([&, producer] {
-          std::array<int, bulk_size> values{};
+          std::array<int, BulkSize> values{};
           ready_gate.count_down();
           start_gate.wait();
           std::size_t sequence = 0;
           while (sequence != items_per_producer) {
-            const auto count = std::min(bulk_size, items_per_producer - sequence);
+            const auto count = std::min(BulkSize, items_per_producer - sequence);
             for (std::size_t index = 0; index < count; ++index) {
               values[index] = static_cast<int>(producer * items_per_producer + sequence + index);
             }
@@ -652,7 +750,7 @@ void run_bulk_mpmc(benchmark::State &state) {
 
       std::size_t final_count = 0;
       std::uint64_t final_sum = 0;
-      std::array<int, bulk_size> final_values{};
+      std::array<int, BulkSize> final_values{};
       for (;;) {
         const auto count =
             queue.try_dequeue_bulk(0, final_values.data(), final_values.size());
@@ -764,6 +862,18 @@ void mpmc_arguments(benchmark::internal::Benchmark *benchmark) {
       ->MinTime(0.25);
 }
 
+void block_batch_arguments(benchmark::internal::Benchmark *benchmark) {
+  benchmark->Args({1, 1, 100000})
+      ->Args({2, 2, 100000})
+      ->Args({4, 4, 100000})
+      ->Args({8, 8, 50000})
+      ->Args({16, 16, 50000})
+      ->ArgNames({"producers", "consumers", "items_per_producer"})
+      ->UseRealTime()
+      ->Unit(benchmark::kMillisecond)
+      ->MinTime(0.15);
+}
+
 void producer_only_arguments(benchmark::internal::Benchmark *benchmark) {
   benchmark->Args({1, 100000})
       ->Args({2, 100000})
@@ -872,6 +982,73 @@ void BM_MoodycamelTokensZeroInitialPool(benchmark::State &state) {
 void BM_BoostLockfree(benchmark::State &state) { run_mpmc<boost_lockfree_queue>(state); }
 void BM_OneTBB(benchmark::State &state) { run_mpmc<tbb_concurrent_queue>(state); }
 void BM_MutexQueue(benchmark::State &state) { run_mpmc<mutex_queue>(state); }
+
+void BM_BlockBatchHakleOffEqualBlocksBulk64(benchmark::State &state) {
+  run_bulk_mpmc<hakle_block_batch_off_queue,
+                initial_pool_mode::equal_blocks, 64>(state);
+}
+void BM_BlockBatchHakleOnEqualBlocksBulk64(benchmark::State &state) {
+  run_bulk_mpmc<hakle_block_batch_on_queue,
+                initial_pool_mode::equal_blocks, 64>(state);
+}
+void BM_BlockBatchHakleOffEqualBlocksBulk256(benchmark::State &state) {
+  run_bulk_mpmc<hakle_block_batch_off_queue,
+                initial_pool_mode::equal_blocks, 256>(state);
+}
+void BM_BlockBatchHakleOnEqualBlocksBulk256(benchmark::State &state) {
+  run_bulk_mpmc<hakle_block_batch_on_queue,
+                initial_pool_mode::equal_blocks, 256>(state);
+}
+void BM_BlockBatchSlabOffZeroPoolBulk64(benchmark::State &state) {
+  run_bulk_mpmc<hakle_slab_block_batch_off_queue,
+                initial_pool_mode::zero_initial_pool, 64>(state);
+}
+void BM_BlockBatchSlabOnZeroPoolBulk64(benchmark::State &state) {
+  run_bulk_mpmc<hakle_slab_block_batch_on_queue,
+                initial_pool_mode::zero_initial_pool, 64>(state);
+}
+void BM_BlockBatchSlabOffZeroPoolBulk256(benchmark::State &state) {
+  run_bulk_mpmc<hakle_slab_block_batch_off_queue,
+                initial_pool_mode::zero_initial_pool, 256>(state);
+}
+void BM_BlockBatchSlabOnZeroPoolBulk256(benchmark::State &state) {
+  run_bulk_mpmc<hakle_slab_block_batch_on_queue,
+                initial_pool_mode::zero_initial_pool, 256>(state);
+}
+
+void BM_FastBlockBatchHakleOffEqualBlocksBulk64(benchmark::State &state) {
+  run_bulk_mpmc<hakle_fast_block_batch_off_queue,
+                initial_pool_mode::equal_blocks, 64>(state);
+}
+void BM_FastBlockBatchHakleOnEqualBlocksBulk64(benchmark::State &state) {
+  run_bulk_mpmc<hakle_fast_block_batch_on_queue,
+                initial_pool_mode::equal_blocks, 64>(state);
+}
+void BM_FastBlockBatchHakleOffEqualBlocksBulk256(benchmark::State &state) {
+  run_bulk_mpmc<hakle_fast_block_batch_off_queue,
+                initial_pool_mode::equal_blocks, 256>(state);
+}
+void BM_FastBlockBatchHakleOnEqualBlocksBulk256(benchmark::State &state) {
+  run_bulk_mpmc<hakle_fast_block_batch_on_queue,
+                initial_pool_mode::equal_blocks, 256>(state);
+}
+void BM_FastBlockBatchSlabOffZeroPoolBulk64(benchmark::State &state) {
+  run_bulk_mpmc<hakle_slab_fast_block_batch_off_queue,
+                initial_pool_mode::zero_initial_pool, 64>(state);
+}
+void BM_FastBlockBatchSlabOnZeroPoolBulk64(benchmark::State &state) {
+  run_bulk_mpmc<hakle_slab_fast_block_batch_on_queue,
+                initial_pool_mode::zero_initial_pool, 64>(state);
+}
+void BM_FastBlockBatchSlabOffZeroPoolBulk256(benchmark::State &state) {
+  run_bulk_mpmc<hakle_slab_fast_block_batch_off_queue,
+                initial_pool_mode::zero_initial_pool, 256>(state);
+}
+void BM_FastBlockBatchSlabOnZeroPoolBulk256(benchmark::State &state) {
+  run_bulk_mpmc<hakle_slab_fast_block_batch_on_queue,
+                initial_pool_mode::zero_initial_pool, 256>(state);
+}
+
 void BM_HakleTokenBulkEqualBlocks(benchmark::State &state) {
   run_bulk_mpmc<original_hakle_token_queue,
                 initial_pool_mode::equal_blocks>(state);
@@ -1005,6 +1182,22 @@ BENCHMARK(BM_MoodycamelTokensZeroInitialPool)->Apply(mpmc_arguments);
 BENCHMARK(BM_BoostLockfree)->Apply(mpmc_arguments);
 BENCHMARK(BM_OneTBB)->Apply(mpmc_arguments);
 BENCHMARK(BM_MutexQueue)->Apply(mpmc_arguments);
+BENCHMARK(BM_BlockBatchHakleOffEqualBlocksBulk64)->Apply(block_batch_arguments);
+BENCHMARK(BM_BlockBatchHakleOnEqualBlocksBulk64)->Apply(block_batch_arguments);
+BENCHMARK(BM_BlockBatchHakleOffEqualBlocksBulk256)->Apply(block_batch_arguments);
+BENCHMARK(BM_BlockBatchHakleOnEqualBlocksBulk256)->Apply(block_batch_arguments);
+BENCHMARK(BM_BlockBatchSlabOffZeroPoolBulk64)->Apply(block_batch_arguments);
+BENCHMARK(BM_BlockBatchSlabOnZeroPoolBulk64)->Apply(block_batch_arguments);
+BENCHMARK(BM_BlockBatchSlabOffZeroPoolBulk256)->Apply(block_batch_arguments);
+BENCHMARK(BM_BlockBatchSlabOnZeroPoolBulk256)->Apply(block_batch_arguments);
+BENCHMARK(BM_FastBlockBatchHakleOffEqualBlocksBulk64)->Apply(block_batch_arguments);
+BENCHMARK(BM_FastBlockBatchHakleOnEqualBlocksBulk64)->Apply(block_batch_arguments);
+BENCHMARK(BM_FastBlockBatchHakleOffEqualBlocksBulk256)->Apply(block_batch_arguments);
+BENCHMARK(BM_FastBlockBatchHakleOnEqualBlocksBulk256)->Apply(block_batch_arguments);
+BENCHMARK(BM_FastBlockBatchSlabOffZeroPoolBulk64)->Apply(block_batch_arguments);
+BENCHMARK(BM_FastBlockBatchSlabOnZeroPoolBulk64)->Apply(block_batch_arguments);
+BENCHMARK(BM_FastBlockBatchSlabOffZeroPoolBulk256)->Apply(block_batch_arguments);
+BENCHMARK(BM_FastBlockBatchSlabOnZeroPoolBulk256)->Apply(block_batch_arguments);
 BENCHMARK(BM_HakleTokenBulkEqualBlocks)->Apply(mpmc_arguments);
 BENCHMARK(BM_HakleTokenBulkZeroInitialPool)->Apply(mpmc_arguments);
 BENCHMARK(BM_HakleOptimizedTokenBulkEqualBlocks)->Apply(mpmc_arguments);

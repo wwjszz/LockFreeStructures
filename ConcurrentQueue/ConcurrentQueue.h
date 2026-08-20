@@ -126,6 +126,23 @@ struct UseImplicitProducerCache : std::true_type {};
 template <class Traits>
 struct UseImplicitProducerCache<Traits, VoidT<decltype( Traits::UseImplicitProducerCache )>> : std::bool_constant<Traits::UseImplicitProducerCache> {};
 
+// Optional switch for SlowQueue bulk enqueue. Managers that expose the optional
+// RequisitionBlocks extension can reserve a block chain with fewer atomics.
+template <class Traits, class = void>
+struct UseBulkBlockRequisition : std::true_type {};
+
+template <class Traits>
+struct UseBulkBlockRequisition<Traits, VoidT<decltype( Traits::UseBulkBlockRequisition )>> : std::bool_constant<Traits::UseBulkBlockRequisition> {};
+
+// Experimental per-traits switch for FastQueue bulk enqueue. Keep it separate
+// from SlowQueue so the explicit ProducerToken path can be benchmarked and
+// enabled independently.
+template <class Traits, class = void>
+struct UseFastQueueBulkBlockRequisition : std::false_type {};
+
+template <class Traits>
+struct UseFastQueueBulkBlockRequisition<Traits, VoidT<decltype( Traits::UseFastQueueBulkBlockRequisition )>> : std::bool_constant<Traits::UseFastQueueBulkBlockRequisition> {};
+
 // Optional per-traits switch for ProducerToken operations. Direct dispatch is
 // safe because a ProducerToken always owns an explicit producer; disabling it
 // retains the original generic ProducerListNode dispatch path.
@@ -216,7 +233,7 @@ protected:
 #endif
 
 // SPMC Queue
-template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE = HakleFlagsBlock<T, BLOCK_SIZE>, HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>>
+template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsBlock ) BLOCK_TYPE = HakleFlagsBlock<T, BLOCK_SIZE>, HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>, bool ENABLE_BATCH_REQUISITION = false>
 class FastQueue : public _QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE> {
 public:
     using Base = _QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>;
@@ -443,9 +460,15 @@ public:
         BlockType*  StartBlock             = this->TailBlock();
         std::size_t StartTailIndex         = this->TailIndex.load( std::memory_order_relaxed );
         BlockType*  FirstAllocatedBlock    = nullptr;
+        BlockType*  AvailableBlock         = nullptr;
 
         // roll back
-        auto RollBack = [ this, &OriginNextIndexEntry, StartBlock, &FirstAllocatedBlock ]() -> void {
+        auto RollBack = [ this, &OriginNextIndexEntry, StartBlock, &FirstAllocatedBlock, &AvailableBlock ]() -> void {
+            if ( AvailableBlock != nullptr ) {
+                BlockManager->ReturnBlocks( AvailableBlock );
+                AvailableBlock = nullptr;
+            }
+
             if ( FirstAllocatedBlock != nullptr ) {
                 BlockType* LastAllocatedBlock = this->TailBlock();
                 BlockType* AllocatedBlock     = FirstAllocatedBlock;
@@ -488,7 +511,6 @@ public:
 
             while ( BlockCountNeed > 0 ) {
                 // we must get a new block
-                --BlockCountNeed;
                 CurrentTailIndex += BlockSize;
 
                 // TODO: add MAX_SIZE check
@@ -511,11 +533,25 @@ public:
                     OriginNextIndexEntry = OriginIndexEntriesUsed;
                 }
 
-                BlockType* NewBlock = BlockManager->RequisitionBlock( Mode );
+                if ( AvailableBlock == nullptr ) {
+                    HAKLE_TRY {
+                        BlockBatch<BlockType> Batch = RequisitionBlockBatch( BlockCountNeed, Mode );
+                        AvailableBlock = Batch.First;
+                    }
+                    HAKLE_CATCH( ... ) {
+                        RollBack();
+                        HAKLE_RETHROW;
+                    }
+                }
+
+                BlockType* NewBlock = AvailableBlock;
                 if HAKLE_UNLIKELY ( NewBlock == nullptr ) {
                     RollBack();
                     return false;
                 }
+                AvailableBlock = NewBlock->Next;
+                NewBlock->Next = nullptr;
+                --BlockCountNeed;
 
                 NewBlock->Reset();
                 if ( this->TailBlock() == nullptr ) {
@@ -742,6 +778,20 @@ public:
     }
 
 private:
+    HAKLE_CPP14_CONSTEXPR BlockBatch<BlockType> RequisitionBlockBatch( std::size_t MaxCount, AllocMode Mode ) {
+        if constexpr ( ENABLE_BATCH_REQUISITION && HasRequisitionBlocks<BlockManagerType>::value ) {
+            return BlockManager->RequisitionBlocks( MaxCount, Mode );
+        }
+        else {
+            BlockType* Block = BlockManager->RequisitionBlock( Mode );
+            if ( Block != nullptr ) {
+                Block->Next = nullptr;
+                return { Block, 1 };
+            }
+            return {};
+        }
+    }
+
     struct IndexEntry {
         std::size_t Base{ 0 };
         BlockType*  InnerBlock{ nullptr };
@@ -824,7 +874,7 @@ private:
 };
 
 template <class T, std::size_t BLOCK_SIZE, class Allocator = HakleAllocator<T>, HAKLE_CONCEPT( IsBlockWithMeaningfulSetResult ) BLOCK_TYPE = HakleCounterBlock<T, BLOCK_SIZE>,
-          HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>>
+          HAKLE_CONCEPT( IsBlockManager ) BLOCK_MANAGER_TYPE = HakleBlockManager<BLOCK_TYPE>, bool ENABLE_BATCH_REQUISITION = true>
 class SlowQueue : public _QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE> {
 public:
     using Base = _QueueBase<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>;
@@ -1017,8 +1067,9 @@ public:
         std::size_t OriginTailIndex     = this->TailIndex.load( std::memory_order_relaxed );
         BlockType*  OriginTailBlock     = this->TailBlock();
         BlockType*  FirstAllocatedBlock = nullptr;
+        BlockType*  AvailableBlock      = nullptr;
 
-        auto&& RollBack = [ this, &FirstAllocatedBlock, OriginTailIndex, OriginTailBlock ]() {
+        auto&& RollBack = [ this, &FirstAllocatedBlock, &AvailableBlock, OriginTailIndex, OriginTailBlock ]() {
             IndexEntry* IndexEntry       = nullptr;
             std::size_t CurrentTailIndex = ( OriginTailIndex - 1 ) & ~( BlockSize - 1 );
             for ( BlockType* Block = FirstAllocatedBlock; Block; Block = Block->Next ) {
@@ -1029,6 +1080,8 @@ public:
             }
 
             BlockManager()->ReturnBlocks( FirstAllocatedBlock );
+            BlockManager()->ReturnBlocks( AvailableBlock );
+            AvailableBlock = nullptr;
             this->TailBlock() = OriginTailBlock;
         };
 
@@ -1039,7 +1092,6 @@ public:
         if ( NeedCount > 0 ) {
             while ( NeedCount > 0 ) {
                 CurrentTailIndex += BlockSize;
-                --NeedCount;
 
                 bool        IndexInserted = false;
                 BlockType*  NewBlock      = nullptr;
@@ -1047,7 +1099,26 @@ public:
 
                 // TODO: add MAX_SIZE check
                 bool full = !CircularLessThan( this->HeadIndex.load( std::memory_order_relaxed ), CurrentTailIndex + BlockSize );
-                if ( full || !( IndexInserted = InsertBlockIndexEntry<Mode>( IndexEntry, CurrentTailIndex ) ) || !( NewBlock = BlockManager()->RequisitionBlock( Mode ) ) ) {
+                if ( !full && ( IndexInserted = InsertBlockIndexEntry<Mode>( IndexEntry, CurrentTailIndex ) ) ) {
+                    if ( AvailableBlock == nullptr ) {
+                        HAKLE_TRY {
+                            BlockBatch<BlockType> Batch = RequisitionBlockBatch( NeedCount, Mode );
+                            AvailableBlock = Batch.First;
+                        }
+                        HAKLE_CATCH( ... ) {
+                            RewindBlockIndexTail();
+                            IndexEntry->Value.store( nullptr, std::memory_order_relaxed );
+                            RollBack();
+                            HAKLE_RETHROW;
+                        }
+                    }
+                    if ( AvailableBlock != nullptr ) {
+                        NewBlock = AvailableBlock;
+                        AvailableBlock = AvailableBlock->Next;
+                        NewBlock->Next = nullptr;
+                    }
+                }
+                if ( full || !IndexInserted || NewBlock == nullptr ) {
                     if ( IndexInserted ) {
                         RewindBlockIndexTail();
                         IndexEntry->Value.store( nullptr, std::memory_order_relaxed );
@@ -1056,8 +1127,8 @@ public:
                     return false;
                 }
 
+                --NeedCount;
                 NewBlock->Reset();
-                NewBlock->Next = nullptr;
 
                 IndexEntry->Value.store( NewBlock, std::memory_order_relaxed );
 
@@ -1069,6 +1140,10 @@ public:
                     FirstAllocatedBlock = NewBlock;
                 }
             }
+        }
+        if ( AvailableBlock != nullptr ) {
+            BlockManager()->ReturnBlocks( AvailableBlock );
+            AvailableBlock = nullptr;
         }
         // std::allocator<T> alloc;
         // we already have enough blocks, let's fill them
@@ -1127,6 +1202,23 @@ public:
         this->TailIndex.store( OriginTailIndex + Count, std::memory_order_release );
         return true;
     }
+
+private:
+    HAKLE_CPP14_CONSTEXPR BlockBatch<BlockType> RequisitionBlockBatch( std::size_t MaxCount, AllocMode Mode ) {
+        if constexpr ( ENABLE_BATCH_REQUISITION && HasRequisitionBlocks<BlockManagerType>::value ) {
+            return BlockManager()->RequisitionBlocks( MaxCount, Mode );
+        }
+        else {
+            BlockType* Block = BlockManager()->RequisitionBlock( Mode );
+            if ( Block != nullptr ) {
+                Block->Next = nullptr;
+                return { Block, 1 };
+            }
+            return {};
+        }
+    }
+
+public:
 
     template <class U>
     HAKLE_CPP14_CONSTEXPR bool Dequeue( U& Element ) HAKLE_REQUIRES( std::assignable_from<decltype( Element ), ValueType&&> ) {
@@ -1425,6 +1517,7 @@ struct ConcurrentQueueDefaultTraits {
     static constexpr std::size_t InitialImplicitQueueSize = 32;
     static constexpr bool        UseImplicitProducerCache = true;
     static constexpr bool        UseImplicitConsumerCache = true;
+    static constexpr bool        UseBulkBlockRequisition = true;
     static constexpr bool        UseDirectProducerTokenDispatch = true;
 
     using AllocatorType = Allocator;
@@ -1476,8 +1569,8 @@ public:
 
     using BaseProducer = _QueueTypelessBase;
 
-    using ExplicitProducer = FastQueue<T, BlockSize, Allocator, ExplicitBlockType, ExplicitBlockManagerType>;
-    using ImplicitProducer = SlowQueue<T, BlockSize, Allocator, ImplicitBlockType, ImplicitBlockManagerType>;
+    using ExplicitProducer = FastQueue<T, BlockSize, Allocator, ExplicitBlockType, ExplicitBlockManagerType, UseFastQueueBulkBlockRequisition<Traits>::value>;
+    using ImplicitProducer = SlowQueue<T, BlockSize, Allocator, ImplicitBlockType, ImplicitBlockManagerType, UseBulkBlockRequisition<Traits>::value>;
 
     using ExplicitProducerAllocatorTraits = typename HakeAllocatorTraits<AllocatorType>::template RebindTraits<ExplicitProducer>;
     using ImplicitProducerAllocatorTraits = typename HakeAllocatorTraits<AllocatorType>::template RebindTraits<ImplicitProducer>;
@@ -2281,13 +2374,13 @@ private:
 };
 
 #if HAKLE_CPP_VERSION >= 20
-template <class T, std::size_t BLOCK_SIZE, class Allocator, class BLOCK_TYPE, class BLOCK_MANAGER_TYPE>
-inline HAKLE_CPP14_CONSTEXPR void swap( FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& lhs, FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& rhs ) noexcept HAKLE_SWAP_REQUIES {
+template <class T, std::size_t BLOCK_SIZE, class Allocator, class BLOCK_TYPE, class BLOCK_MANAGER_TYPE, bool ENABLE_BATCH_REQUISITION>
+inline HAKLE_CPP14_CONSTEXPR void swap( FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE, ENABLE_BATCH_REQUISITION>& lhs, FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE, ENABLE_BATCH_REQUISITION>& rhs ) noexcept HAKLE_SWAP_REQUIES {
     lhs.swap( rhs );
 }
 
-template <class T, std::size_t BLOCK_SIZE, class Allocator, class BLOCK_TYPE, class BLOCK_MANAGER_TYPE>
-inline HAKLE_CPP14_CONSTEXPR void swap( SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& lhs, SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>& rhs ) noexcept HAKLE_SWAP_REQUIES {
+template <class T, std::size_t BLOCK_SIZE, class Allocator, class BLOCK_TYPE, class BLOCK_MANAGER_TYPE, bool ENABLE_BATCH_REQUISITION>
+inline HAKLE_CPP14_CONSTEXPR void swap( SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE, ENABLE_BATCH_REQUISITION>& lhs, SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE, ENABLE_BATCH_REQUISITION>& rhs ) noexcept HAKLE_SWAP_REQUIES {
     lhs.swap( rhs );
 }
 
@@ -2300,11 +2393,11 @@ inline HAKLE_CPP14_CONSTEXPR void swap( ConcurrentQueue<T, Allocator, Traits>& l
 
 #if HAKLE_CPP_VERSION <= 14
 
-template <class T, std::size_t BLOCK_SIZE, class Allocator, class BLOCK_TYPE, class BLOCK_MANAGER_TYPE>
-std::size_t SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>::BlockSizeLog2 = BitWidth( BlockSize ) - 1;
+template <class T, std::size_t BLOCK_SIZE, class Allocator, class BLOCK_TYPE, class BLOCK_MANAGER_TYPE, bool ENABLE_BATCH_REQUISITION>
+std::size_t SlowQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE, ENABLE_BATCH_REQUISITION>::BlockSizeLog2 = BitWidth( BlockSize ) - 1;
 
-template <class T, std::size_t BLOCK_SIZE, class Allocator, class BLOCK_TYPE, class BLOCK_MANAGER_TYPE>
-std::size_t FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE>::BlockSizeLog2 = BitWidth( BlockSize ) - 1;
+template <class T, std::size_t BLOCK_SIZE, class Allocator, class BLOCK_TYPE, class BLOCK_MANAGER_TYPE, bool ENABLE_BATCH_REQUISITION>
+std::size_t FastQueue<T, BLOCK_SIZE, Allocator, BLOCK_TYPE, BLOCK_MANAGER_TYPE, ENABLE_BATCH_REQUISITION>::BlockSizeLog2 = BitWidth( BlockSize ) - 1;
 
 template <class T, class Alloc>
 constexpr std::size_t ConcurrentQueueDefaultTraits<T, Alloc>::BlockSize;
